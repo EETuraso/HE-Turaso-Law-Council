@@ -170,9 +170,6 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     const hearings = data.cases.flatMap((item) => item.hearings.map((hearing) => ({ ...hearing, caseId: item.id, caseNumber: item.caseNumber, caseTitle: item.title }))).sort((left, right) => left.hearingDate.localeCompare(right.hearingDate))
     const documents = data.cases.flatMap((item) => item.documents.map((document) => ({ ...document, caseNumber: item.caseNumber, caseTitle: item.title })))
     const messages = data.consultations.filter((item) => item.message.trim())
-    const statuses = data.cases.reduce<Record<string, number>>((counts, item) => { counts[item.status] = (counts[item.status] || 0) + 1; return counts }, {})
-    const practiceAreas = data.cases.reduce<Record<string, number>>((counts, item) => { counts[item.caseType] = (counts[item.caseType] || 0) + 1; return counts }, {})
-
     if (view === 'overview') content.innerHTML = renderOverview()
     else if (view === 'cases') content.innerHTML = renderCases()
     else if (view === 'case-detail') content.innerHTML = renderCaseDetail()
