@@ -60,12 +60,14 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     const token = localStorage.getItem(options.tokenKey)
     const response = await fetch(`${options.apiBase}/admin/documents/${encodeURIComponent(id)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
     if (!response.ok) throw new Error('Unable to download this document.')
-    const objectUrl = URL.createObjectURL(await response.blob())
+    const contentType = response.headers.get('content-type') || ''
+    const target = contentType.includes('application/json') ? (await response.json() as { url: string }).url : URL.createObjectURL(await response.blob())
     const link = document.createElement('a')
-    link.href = objectUrl
+    link.href = target
     link.download = fileName
+    if (contentType.includes('application/json')) link.target = '_blank'
     link.click()
-    URL.revokeObjectURL(objectUrl)
+    if (target.startsWith('blob:')) URL.revokeObjectURL(target)
   }
 
   const fileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {

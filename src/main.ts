@@ -4,7 +4,7 @@ import { createAdminWorkspace, type AdminDashboardData } from './admin-dashboard
 type PublicPage = 'home' | 'about' | 'chamber' | 'services' | 'insights' | 'contact'
 type Page = PublicPage | 'portal' | 'admin'
 const page = (document.body.dataset.page || 'home') as Page
-const apiBase = 'http://127.0.0.1:4000/api/v1'
+const apiBase = import.meta.env.VITE_API_BASE || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'http://127.0.0.1:4000/api/v1' : '/api/v1')
 const links = { about: 'about.html', services: 'practice-areas.html', chamber: 'chamber.html', insights: 'insights.html', contact: 'contact.html', portal: 'client-portal.html' }
 const services = [
   ['01', 'Litigation', 'Civil and criminal disputes, court representation, and strategic advocacy.'],
