@@ -20,7 +20,7 @@ case document storage. The service role key is server-only; never prefix it with
 
 1. Create a Supabase project and run `supabase/schema.sql` in its SQL Editor.
 2. Copy `.env.example` to `.env`, add the Supabase project URL and service role
-   key, then migrate the current local records with:
+   secret key, then migrate the current local records with:
 
    ```powershell
    node --env-file=.env scripts/migrate-to-supabase.mjs
@@ -32,7 +32,7 @@ case document storage. The service role key is server-only; never prefix it with
    the build command and `dist` as the output directory.
 4. Add these Vercel environment variables for Production (and Preview if needed):
    `API_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SUPABASE_URL`, and
-   `SUPABASE_SERVICE_ROLE_KEY`. Set `VITE_API_BASE` to `/api/v1` if you want to
+   `SUPABASE_SECRET_KEY`. A legacy service role key is also supported. Set `VITE_API_BASE` to `/api/v1` if you want to
    make the API path explicit.
 5. Deploy from Vercel. The website and `/api/v1/*` endpoints are served from the
    same Vercel project; client documents are stored in the private Supabase

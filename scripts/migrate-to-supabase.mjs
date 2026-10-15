@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 const url = String(process.env.SUPABASE_URL || '').replace(/\/$/, '')
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
-if (!url || !key) throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your local .env before migrating.')
+if (!url || !key) throw new Error('Set SUPABASE_URL and SUPABASE_SECRET_KEY in your local .env before migrating.')
 
 const request = async (path, options = {}) => {
   const response = await fetch(`${url}${path}`, {
