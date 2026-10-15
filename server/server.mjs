@@ -227,6 +227,11 @@ const createClientRecord = ({ firstName, lastName, email, phone, password }) => 
 }
 
 export const handler = async (request, response) => {
+  const requestPath = new URL(request.url || '/', 'http://localhost').pathname
+  const apiPath = requestPath.startsWith('/api/v1/') || requestPath === '/api/v1'
+    ? requestPath
+    : `/api/v1${requestPath.startsWith('/') ? requestPath : `/${requestPath}`}`
+
   if (request.method === 'OPTIONS') {
     response.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
@@ -237,11 +242,11 @@ export const handler = async (request, response) => {
   }
 
   try {
-    if (request.method === 'GET' && request.url === '/api/v1/health') {
+    if (request.method === 'GET' && apiPath === '/api/v1/health') {
       return json(response, 200, { status: 'ok', service: 'henry-turaso-law-council-api' })
     }
 
-    if (request.method === 'POST' && request.url === '/api/v1/consultations') {
+    if (request.method === 'POST' && apiPath === '/api/v1/consultations') {
       const body = await readBody(request)
       const name = String(body.name || '').trim()
       const email = String(body.email || '').trim().toLowerCase()
@@ -305,7 +310,7 @@ export const handler = async (request, response) => {
       return json(response, 200, { consultation })
     }
 
-    if (request.method === 'POST' && request.url === '/api/v1/admin/cases') {
+    if (request.method === 'POST' && apiPath === '/api/v1/admin/cases') {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
       const body = await readBody(request)
@@ -440,7 +445,7 @@ export const handler = async (request, response) => {
       return json(response, 201, { note })
     }
 
-    if (request.method === 'POST' && request.url === '/api/v1/client/signup') {
+    if (request.method === 'POST' && apiPath === '/api/v1/client/signup') {
       const body = await readBody(request)
       const fullName = String(body.name || `${body.firstName || ''} ${body.lastName || ''}`.trim()).trim()
       const firstName = String(body.firstName || fullName.split(/\s+/)[0] || '').trim()
@@ -476,7 +481,7 @@ export const handler = async (request, response) => {
       })
     }
 
-    if (request.method === 'POST' && request.url === '/api/v1/auth/login') {
+    if (request.method === 'POST' && apiPath === '/api/v1/auth/login') {
       const body = await readBody(request)
       const email = String(body.email || '').trim().toLowerCase()
       const password = String(body.password || '')
@@ -492,7 +497,7 @@ export const handler = async (request, response) => {
       })
     }
 
-    if (request.method === 'POST' && request.url === '/api/v1/admin/login') {
+    if (request.method === 'POST' && apiPath === '/api/v1/admin/login') {
       const body = await readBody(request)
       const email = String(body.email || '').trim().toLowerCase()
       const password = String(body.password || '')
@@ -508,7 +513,7 @@ export const handler = async (request, response) => {
       })
     }
 
-    if (request.method === 'POST' && request.url === '/api/v1/auth/logout') {
+    if (request.method === 'POST' && apiPath === '/api/v1/auth/logout') {
       const token = (request.headers.authorization || '').startsWith('Bearer ')
         ? (request.headers.authorization || '').slice(7)
         : ''
@@ -519,7 +524,7 @@ export const handler = async (request, response) => {
       return json(response, 200, { message: 'Signed out.' })
     }
 
-    if (request.method === 'GET' && request.url === '/api/v1/client/dashboard') {
+    if (request.method === 'GET' && apiPath === '/api/v1/client/dashboard') {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'CLIENT') {
         return json(response, 401, { message: 'Authentication required.' })
@@ -533,7 +538,7 @@ export const handler = async (request, response) => {
       return json(response, 200, await toClientDashboard(client))
     }
 
-    if (request.method === 'GET' && request.url === '/api/v1/admin/dashboard') {
+    if (request.method === 'GET' && apiPath === '/api/v1/admin/dashboard') {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'ADMIN') {
         return json(response, 403, { message: 'Administrator access required.' })
