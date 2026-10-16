@@ -41,3 +41,12 @@ case document storage. The service role key is server-only; never prefix it with
 Uploaded documents are limited to 3 MB so they fit within Vercel's function
 request size limit. Local development can continue using the existing local API
 and `server/data` files when Supabase variables are not set.
+
+## GitHub Pages deployment
+
+The GitHub Pages workflow builds the Vite site and publishes `dist/`. Because
+GitHub Pages cannot run the API server, it is configured to call the production
+Vercel API at `https://barr-henry-law-council.vercel.app/api/v1`. Keep that URL
+in sync with the production Vercel domain. The Vercel deployment must also have
+the production environment variables listed above and a configured Supabase
+project.

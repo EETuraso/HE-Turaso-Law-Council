@@ -227,7 +227,11 @@ const createClientRecord = ({ firstName, lastName, email, phone, password }) => 
 }
 
 export const handler = async (request, response) => {
-  const requestPath = new URL(request.url || '/', 'http://localhost').pathname
+  const requestUrl = new URL(request.url || '/', 'http://localhost')
+  const forwardedPath = requestUrl.searchParams.get('__route')
+  const requestPath = forwardedPath
+    ? `/api/v1/${forwardedPath.replace(/^\/+/, '')}`
+    : requestUrl.pathname
   const apiPath = requestPath.startsWith('/api/v1/') || requestPath === '/api/v1'
     ? requestPath
     : `/api/v1${requestPath.startsWith('/') ? requestPath : `/${requestPath}`}`
@@ -292,7 +296,7 @@ export const handler = async (request, response) => {
       return json(response, 201, { reference: consultation.reference, status: consultation.status })
     }
 
-    const consultationStatusRoute = request.url.match(/^\/api\/v1\/admin\/consultations\/([^/]+)\/status$/)
+    const consultationStatusRoute = apiPath.match(/^\/api\/v1\/admin\/consultations\/([^/]+)\/status$/)
     if (request.method === 'POST' && consultationStatusRoute) {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
@@ -344,7 +348,7 @@ export const handler = async (request, response) => {
       return json(response, 201, { case: caseRecord })
     }
 
-    const caseHearingsRoute = request.url.match(/^\/api\/v1\/admin\/cases\/([^/]+)\/hearings$/)
+    const caseHearingsRoute = apiPath.match(/^\/api\/v1\/admin\/cases\/([^/]+)\/hearings$/)
     if (request.method === 'POST' && caseHearingsRoute) {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
@@ -366,7 +370,7 @@ export const handler = async (request, response) => {
       return json(response, 201, { hearing })
     }
 
-    const caseDocumentsRoute = request.url.match(/^\/api\/v1\/admin\/cases\/([^/]+)\/documents$/)
+    const caseDocumentsRoute = apiPath.match(/^\/api\/v1\/admin\/cases\/([^/]+)\/documents$/)
     if (request.method === 'POST' && caseDocumentsRoute) {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
@@ -407,7 +411,7 @@ export const handler = async (request, response) => {
       return json(response, 201, { document: { id, title, fileName, mimeType, createdAt: document.createdAt } })
     }
 
-    const documentDownloadRoute = request.url.match(/^\/api\/v1\/admin\/documents\/([^/]+)$/)
+    const documentDownloadRoute = apiPath.match(/^\/api\/v1\/admin\/documents\/([^/]+)$/)
     if (request.method === 'GET' && documentDownloadRoute) {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
@@ -428,7 +432,7 @@ export const handler = async (request, response) => {
       return response.end(fileBytes)
     }
 
-    const caseNotesRoute = request.url.match(/^\/api\/v1\/admin\/cases\/([^/]+)\/notes$/)
+    const caseNotesRoute = apiPath.match(/^\/api\/v1\/admin\/cases\/([^/]+)\/notes$/)
     if (request.method === 'POST' && caseNotesRoute) {
       const session = await getSessionUser(request)
       if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
