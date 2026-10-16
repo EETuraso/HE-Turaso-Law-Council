@@ -48,6 +48,24 @@ const tokenHash = (token) => createHmac('sha256', secret).update(token).digest('
 
 const hashPassword = (password, salt) => pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex')
 
+const defaultAdminSettings = () => ({
+  councilName: 'Henry E Turaso Law Council',
+  principalName: 'Henry E Turaso',
+  tagline: 'Legal services and representation',
+  chamberName: 'Besite Malamre Clinic',
+  officeAddress: 'Jimeta, Yola, Adamawa State, Nigeria',
+  contactEmail: String(process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
+  contactPhone: '',
+  appointmentPolicy: 'By appointment',
+  timezone: 'Africa/Lagos',
+  notificationFrom: String(process.env.NOTIFICATION_FROM || '').trim(),
+  remindersEnabled: true,
+  reminder48Enabled: true,
+  reminder24Enabled: true
+})
+
+const getAdminSettings = (admin) => ({ ...defaultAdminSettings(), ...(admin?.settings || {}) })
+
 const ensureUserStore = () => {
   mkdirSync(dataDir, { recursive: true })
   if (!existsSync(storagePath)) {
@@ -218,16 +236,15 @@ const toClientDashboard = async (user) => ({
 
 const escapeEmailHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character])
 
-const sendReminderEmail = async ({ to, recipientName, offsetHours, caseRecord, hearing }) => {
+const sendReminderEmail = async ({ to, recipientName, offsetHours, caseRecord, hearing, from, timeZone }) => {
   const apiKey = process.env.RESEND_API_KEY
-  const from = process.env.NOTIFICATION_FROM
   if (!apiKey || !from) {
-    const error = new Error('Email reminders are not configured. Set RESEND_API_KEY and NOTIFICATION_FROM.')
+    const error = new Error('Email delivery is not configured. Set the Resend API key and sender address.')
     error.statusCode = 503
     throw error
   }
   const hearingDate = new Date(hearing.hearingDate)
-  const formattedDate = new Intl.DateTimeFormat('en-NG', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Africa/Lagos' }).format(hearingDate)
+  const formattedDate = new Intl.DateTimeFormat('en-NG', { dateStyle: 'full', timeStyle: 'short', timeZone: timeZone || 'Africa/Lagos' }).format(hearingDate)
   const safe = {
     name: escapeEmailHtml(recipientName || 'Client'),
     caseNumber: escapeEmailHtml(caseRecord.caseNumber),
@@ -253,8 +270,8 @@ const sendReminderEmail = async ({ to, recipientName, offsetHours, caseRecord, h
 }
 
 const sendDueHearingReminders = async (now = Date.now()) => {
-  if (!process.env.RESEND_API_KEY || !process.env.NOTIFICATION_FROM) {
-    const error = new Error('Email reminders are not configured. Set RESEND_API_KEY and NOTIFICATION_FROM.')
+  if (!process.env.RESEND_API_KEY) {
+    const error = new Error('Email reminders are not configured. Set RESEND_API_KEY.')
     error.statusCode = 503
     throw error
   }
@@ -265,6 +282,20 @@ const sendDueHearingReminders = async (now = Date.now()) => {
     throw error
   }
   const [cases, users] = await Promise.all([readCases(), readUsers()])
+  const admin = users.find((user) => user.role === 'ADMIN')
+  const settings = getAdminSettings(admin)
+  if (!settings.remindersEnabled) return { checked: 0, sent: 0, failed: 0, disabled: true }
+  const from = String(settings.notificationFrom || process.env.NOTIFICATION_FROM || '').trim()
+  if (!from) {
+    const error = new Error('Set a verified sender address in admin settings or Vercel.')
+    error.statusCode = 503
+    throw error
+  }
+  const timeZone = settings.timezone || 'Africa/Lagos'
+  const offsets = [
+    ...(settings.reminder48Enabled ? [48] : []),
+    ...(settings.reminder24Enabled ? [24] : [])
+  ]
   const usersByEmail = new Map(users.map((user) => [String(user.email || '').toLowerCase(), user]))
   let checked = 0
   let sent = 0
@@ -290,7 +321,7 @@ const sendDueHearingReminders = async (now = Date.now()) => {
       addRecipient('barrister', barristerEmail)
       addRecipient('client', clientEmail)
 
-      for (const offsetHours of [48, 24]) {
+      for (const offsetHours of offsets) {
         if (hoursUntil > offsetHours) continue
         hearing.remindersSent = hearing.remindersSent || {}
         const reminder = hearing.remindersSent[String(offsetHours)] || {}
@@ -299,7 +330,7 @@ const sendDueHearingReminders = async (now = Date.now()) => {
           if (!pendingRoles.length) continue
           try {
             const recipientName = group.roles.includes('client') ? client?.firstName || 'Client' : 'Barrister'
-            await sendReminderEmail({ to: group.email, recipientName, offsetHours, caseRecord, hearing })
+            await sendReminderEmail({ to: group.email, recipientName, offsetHours, caseRecord, hearing, from, timeZone })
             const sentAt = new Date(now).toISOString()
             for (const role of pendingRoles) reminder[`${role}SentAt`] = sentAt
             hearing.remindersSent[String(offsetHours)] = reminder
@@ -369,6 +400,23 @@ export const handler = async (request, response) => {
       return json(response, result.failed ? 502 : 200, result)
     }
 
+
+    if (request.method === 'GET' && apiPath === '/api/v1/settings/public') {
+      const admin = (await readUsers()).find((user) => user.role === 'ADMIN')
+      const settings = getAdminSettings(admin)
+      return json(response, 200, { settings: {
+        councilName: settings.councilName,
+        principalName: settings.principalName,
+        tagline: settings.tagline,
+        chamberName: settings.chamberName,
+        officeAddress: settings.officeAddress,
+        contactEmail: settings.contactEmail,
+        contactPhone: settings.contactPhone,
+        appointmentPolicy: settings.appointmentPolicy,
+        timezone: settings.timezone
+      } })
+    }
+
     if (request.method === 'POST' && apiPath === '/api/v1/consultations') {
       const body = await readBody(request)
       const name = String(body.name || '').trim()
@@ -413,6 +461,45 @@ export const handler = async (request, response) => {
       consultations.unshift(consultation)
       await writeConsultations(consultations)
       return json(response, 201, { reference: consultation.reference, status: consultation.status })
+    }
+
+
+    if (request.method === 'POST' && apiPath === '/api/v1/admin/settings') {
+      const session = await getSessionUser(request)
+      if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
+      const body = await readBody(request)
+      const users = await readUsers()
+      const admin = users.find((user) => user.id === session.id && user.role === 'ADMIN')
+      if (!admin) return json(response, 404, { message: 'Administrator account not found.' })
+      const current = getAdminSettings(admin)
+      const textFields = ['councilName', 'principalName', 'tagline', 'chamberName', 'officeAddress', 'contactEmail', 'contactPhone', 'appointmentPolicy', 'timezone', 'notificationFrom']
+      const settings = { ...current }
+      for (const field of textFields) {
+        if (typeof body[field] !== 'string') return json(response, 400, { message: 'Provide all text settings.' })
+        settings[field] = body[field].trim()
+      }
+      for (const field of ['remindersEnabled', 'reminder48Enabled', 'reminder24Enabled']) {
+        if (typeof body[field] !== 'boolean') return json(response, 400, { message: 'Reminder options must be enabled or disabled.' })
+        settings[field] = body[field]
+      }
+      const maxLengths = { councilName: 120, principalName: 120, tagline: 240, chamberName: 160, officeAddress: 300, contactEmail: 254, contactPhone: 40, appointmentPolicy: 240, timezone: 64, notificationFrom: 254 }
+      if (Object.entries(maxLengths).some(([field, max]) => settings[field].length > max)) {
+        return json(response, 400, { message: 'One or more settings exceed the allowed length.' })
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settings.contactEmail)) {
+        return json(response, 400, { message: 'Enter a valid public contact email.' })
+      }
+      if (settings.notificationFrom) {
+        const senderAddress = settings.notificationFrom.match(/<([^<>]+)>/)?.[1] || settings.notificationFrom
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderAddress)) {
+          return json(response, 400, { message: 'Enter a valid sender address.' })
+        }
+      }
+      try { new Intl.DateTimeFormat('en', { timeZone: settings.timezone }) }
+      catch { return json(response, 400, { message: 'Choose a valid time zone.' }) }
+      admin.settings = settings
+      await writeUsers(users)
+      return json(response, 200, { settings })
     }
 
     const consultationStatusRoute = apiPath.match(/^\/api\/v1\/admin\/consultations\/([^/]+)\/status$/)
@@ -692,9 +779,15 @@ export const handler = async (request, response) => {
       const totalDocuments = cases.reduce((total, item) => total + (item.documents || []).length, 0)
 
       const adminUser = users.find((user) => user.id === session.id)
+      const settings = getAdminSettings(adminUser)
 
       return json(response, 200, {
         admin: adminUser ? sanitizeClient(adminUser) : null,
+        settings,
+        integrations: {
+          emailConfigured: Boolean(process.env.RESEND_API_KEY && (settings.notificationFrom || process.env.NOTIFICATION_FROM)),
+          cronConfigured: String(process.env.CRON_SECRET || '').length >= 32
+        },
         stats: {
           activeCases: cases.filter((item) => item.status === 'ACTIVE').length,
           upcomingHearings: cases.reduce((total, item) => total + (item.hearings || []).filter((hearing) => hearing.status === 'SCHEDULED').length, 0),

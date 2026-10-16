@@ -12,8 +12,16 @@ export type AdminCase = {
   documents: Array<{ id: string; title: string; fileName: string; mimeType?: string; createdAt: string }>
 }
 
+export type AdminSettings = {
+  councilName: string; principalName: string; tagline: string; chamberName: string; officeAddress: string
+  contactEmail: string; contactPhone: string; appointmentPolicy: string; timezone: string; notificationFrom: string
+  remindersEnabled: boolean; reminder48Enabled: boolean; reminder24Enabled: boolean
+}
+
 export type AdminDashboardData = {
   admin?: { firstName?: string; lastName?: string; email?: string }
+  settings: AdminSettings
+  integrations: { emailConfigured: boolean; cronConfigured: boolean }
   stats: { activeCases: number; upcomingHearings: number; totalClients: number; totalDocuments: number }
   cases: AdminCase[]
   clients: Array<{ name: string; email: string; status: string }>
@@ -38,6 +46,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
   let data: AdminDashboardData | null = null
   let view: AdminView = 'overview'
   let selectedCaseId = ''
+  let settingsNotice = ''
   const reportsButton = root.querySelector<HTMLButtonElement>('[data-admin-nav="reports"]')
   if (reportsButton) {
     reportsButton.dataset.adminNav = 'analytics'
@@ -164,9 +173,53 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     `
   }
 
+  const renderSettings = () => {
+    if (!data) return ''
+    const settings = data.settings
+    const integrationStatus = (configured: boolean) => configured ? 'Configured' : 'Not configured'
+    return `
+      <div class="admin-view-heading"><div><span class="eyebrow">Workspace profile</span><h1>Settings</h1><p>Manage public office information, the dashboard clock, and hearing reminders.</p></div></div>
+      <form class="admin-settings-form" id="admin-settings-form">
+        <section class="admin-panel"><span class="eyebrow">Public profile</span><h2>Office information</h2><div class="admin-form-grid">
+          <label>Council name<input name="councilName" required maxlength="120" value="${escapeHTML(settings.councilName)}"></label>
+          <label>Principal barrister<input name="principalName" required maxlength="120" value="${escapeHTML(settings.principalName)}"></label>
+          <label>Public tagline<input name="tagline" required maxlength="240" value="${escapeHTML(settings.tagline)}"></label>
+          <label>Chamber name<input name="chamberName" required maxlength="160" value="${escapeHTML(settings.chamberName)}"></label>
+          <label>Contact email<input name="contactEmail" type="email" required maxlength="254" value="${escapeHTML(settings.contactEmail)}"></label>
+          <label>Contact phone<input name="contactPhone" type="tel" maxlength="40" value="${escapeHTML(settings.contactPhone)}"></label>
+          <label>Time zone<select name="timezone"><option value="Africa/Lagos" ${settings.timezone === 'Africa/Lagos' ? 'selected' : ''}>Africa/Lagos</option><option value="UTC" ${settings.timezone === 'UTC' ? 'selected' : ''}>UTC</option><option value="Africa/Accra" ${settings.timezone === 'Africa/Accra' ? 'selected' : ''}>Africa/Accra</option><option value="Africa/Johannesburg" ${settings.timezone === 'Africa/Johannesburg' ? 'selected' : ''}>Africa/Johannesburg</option><option value="Europe/London" ${settings.timezone === 'Europe/London' ? 'selected' : ''}>Europe/London</option></select></label>
+          <label>Appointment policy<input name="appointmentPolicy" required maxlength="240" value="${escapeHTML(settings.appointmentPolicy)}"></label>
+        </div><label class="admin-settings-wide">Office address<input name="officeAddress" required maxlength="300" value="${escapeHTML(settings.officeAddress)}"></label></section>
+        <section class="admin-panel"><span class="eyebrow">Hearing notifications</span><h2>Reminder schedule</h2><p class="admin-settings-description">Email reminders are sent to the barrister and assigned client when email delivery is configured.</p>
+          <label class="admin-setting-toggle"><input type="checkbox" name="remindersEnabled" ${settings.remindersEnabled ? 'checked' : ''}> Enable hearing reminders</label>
+          <label class="admin-setting-toggle"><input type="checkbox" name="reminder48Enabled" ${settings.reminder48Enabled ? 'checked' : ''}> Send 48-hour reminders</label>
+          <label class="admin-setting-toggle"><input type="checkbox" name="reminder24Enabled" ${settings.reminder24Enabled ? 'checked' : ''}> Send 24-hour reminders</label>
+          <label class="admin-settings-wide">Verified sender address<input name="notificationFrom" type="text" maxlength="254" placeholder="Council <notices@example.com>" value="${escapeHTML(settings.notificationFrom)}"><small>The sender must be verified with your email provider. The provider API key stays in Vercel and is never shown here.</small></label>
+          <div class="admin-integration-status"><div><span class="eyebrow">Email delivery</span><strong>${integrationStatus(data.integrations.emailConfigured)}</strong><small>${data.integrations.emailConfigured ? 'Provider key and sender are available.' : 'Add RESEND_API_KEY in Vercel Production; set a verified sender above.'}</small></div><div><span class="eyebrow">Reminder trigger</span><strong>${integrationStatus(data.integrations.cronConfigured)}</strong><small>${data.integrations.cronConfigured ? 'The server trigger secret is set.' : 'CRON_SECRET is still required in Vercel and GitHub Actions.'}</small></div></div>
+        </section>
+        <div class="admin-settings-actions"><button class="admin-primary-action" type="submit">Save settings</button><p class="admin-inline-note" role="status">${escapeHTML(settingsNotice)}</p></div>
+      </form>
+    `
+  }
+
+  const updateClock = () => {
+    const clock = root.querySelector<HTMLTimeElement>('#admin-clock')
+    if (!clock) return
+    const now = new Date()
+    clock.dateTime = now.toISOString()
+    try { clock.textContent = new Intl.DateTimeFormat('en-NG', { dateStyle: 'medium', timeStyle: 'medium', timeZone: data?.settings?.timezone || 'Africa/Lagos' }).format(now) }
+    catch { clock.textContent = new Intl.DateTimeFormat('en-NG', { dateStyle: 'medium', timeStyle: 'medium' }).format(now) }
+  }
+  window.setInterval(updateClock, 1000)
+
   const render = () => {
     if (!data) return
     root.querySelectorAll<HTMLButtonElement>('[data-admin-nav]').forEach((button) => button.classList.toggle('is-active', button.dataset.adminNav === (view === 'case-detail' ? 'cases' : view)))
+    updateClock()
+    const councilName = root.querySelector<HTMLElement>('[data-admin-council-name]')
+    if (councilName) councilName.textContent = data.settings.councilName
+    const adminUserName = root.querySelector<HTMLElement>('[data-admin-user-name]')
+    if (adminUserName) adminUserName.textContent = [data.admin?.firstName, data.admin?.lastName].filter(Boolean).join(' ') || data.settings.principalName
     const label = root.querySelector<HTMLElement>('#admin-view-label')
     const content = root.querySelector<HTMLElement>('#admin-view-content')
     if (label) label.textContent = labels[view]
@@ -183,7 +236,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     else if (view === 'messages') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Client correspondence</span><h1>Messages</h1><p>Messages included with consultation requests.</p></div></div><section class="admin-panel">${messages.length ? messages.map((item) => `<article class="admin-message-row"><div><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.email)} · ${escapeHTML(item.reference)} · ${escapeHTML(item.status)}</small></div><p>${escapeHTML(item.message)}</p></article>`).join('') : '<p class="admin-empty">No client messages have been received.</p>'}</section>`
     else if (view === 'consultations') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Appointment requests</span><h1>Consultations</h1><p>Review preferred slots and update each request. Appointments remain unconfirmed until the council contacts the client.</p></div></div><section class="admin-panel">${data.consultations.length ? data.consultations.map((item) => consultationRow(item)).join('') : '<p class="admin-empty">No consultation requests yet.</p>'}</section>`
     else if (view === 'analytics') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Workspace performance</span><h1>Analytics</h1><p>Live breakdowns calculated from cases, hearings, clients, documents, and consultation requests.</p></div></div><div class="admin-stats"><article class="admin-stat"><span>Total cases</span><b>${data.cases.length}</b><small>All recorded matters</small></article><article class="admin-stat"><span>Active cases</span><b>${data.stats.activeCases}</b><small>Currently in progress</small></article><article class="admin-stat"><span>Registered clients</span><b>${data.clients.length}</b><small>Client accounts</small></article><article class="admin-stat"><span>Pending consultations</span><b>${data.consultations.filter((item) => item.status === 'PENDING').length}</b><small>Awaiting review</small></article><article class="admin-stat"><span>Upcoming hearings</span><b>${data.stats.upcomingHearings}</b><small>Scheduled events</small></article><article class="admin-stat"><span>Case documents</span><b>${data.stats.totalDocuments}</b><small>Uploaded files</small></article></div><div class="admin-dashboard-grid admin-analytics-grid">${barChart('Cases by status', 'MATTER DISTRIBUTION', countBy(data.cases, (item) => item.status))}${barChart('Cases by practice area', 'PRACTICE MIX', countBy(data.cases, (item) => item.caseType))}${barChart('Consultations by status', 'REQUEST PIPELINE', countBy(data.consultations, (item) => item.status))}${barChart('Hearings by purpose', 'COURT CALENDAR', countBy(data.cases.flatMap((item) => item.hearings), (item) => item.purpose || 'Hearing'))}</div>`
-    else content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Workspace profile</span><h1>Settings</h1><p>Office information used across the public site.</p></div></div><section class="admin-panel admin-settings-grid"><div><span class="eyebrow">Practice</span><strong>Henry E Turaso Law Council</strong><small>Legal services and representation</small></div><div><span class="eyebrow">Chamber</span><strong>Besite Malamre Clinic</strong><small>Jimeta, Yola, Adamawa State, Nigeria</small></div><div><span class="eyebrow">Contact</span><strong>emmanuelturaso@gmail.com</strong><small>Appointments by arrangement</small></div></section>`
+    else content.innerHTML = renderSettings()
   }
 
   const setView = (nextView: AdminView) => {
@@ -250,7 +303,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
 
   root.addEventListener('submit', async (event) => {
     const form = event.target
-    if (!(form instanceof HTMLFormElement) || !['admin-create-case-form', 'admin-case-note-form', 'admin-case-hearing-form', 'admin-case-document-form'].includes(form.id)) return
+    if (!(form instanceof HTMLFormElement) || !['admin-create-case-form', 'admin-case-note-form', 'admin-case-hearing-form', 'admin-case-document-form', 'admin-settings-form'].includes(form.id)) return
     event.preventDefault()
     const note = form.querySelector<HTMLParagraphElement>('.admin-inline-note')
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')
@@ -265,6 +318,16 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
         const dateInput = form.elements.namedItem('hearingDate') as HTMLInputElement
         body = { ...body as Record<string, FormDataEntryValue>, hearingDate: new Date(dateInput.value).toISOString() }
       }
+      if (form.id === 'admin-settings-form') {
+        path = '/admin/settings'
+        const settingsForm = form as HTMLFormElement
+        body = {
+          ...Object.fromEntries(new FormData(settingsForm).entries()),
+          remindersEnabled: (settingsForm.elements.namedItem('remindersEnabled') as HTMLInputElement).checked,
+          reminder48Enabled: (settingsForm.elements.namedItem('reminder48Enabled') as HTMLInputElement).checked,
+          reminder24Enabled: (settingsForm.elements.namedItem('reminder24Enabled') as HTMLInputElement).checked
+        }
+      }
       if (form.id === 'admin-case-document-form') {
         const fileInput = form.elements.namedItem('documentFile') as HTMLInputElement
         const file = fileInput.files?.[0]
@@ -273,6 +336,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
         body = { title: (form.elements.namedItem('title') as HTMLInputElement).value, fileName: file.name, mimeType: file.type, fileData: await fileAsBase64(file) }
       }
       await authorizedRequest(path, body)
+      if (form.id === 'admin-settings-form') settingsNotice = 'Settings saved.'
       await refresh()
       if (form.id === 'admin-create-case-form') view = 'cases'
       render()
@@ -290,6 +354,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     reset() {
       view = 'overview'
       selectedCaseId = ''
+      settingsNotice = ''
       data = null
     }
   }
