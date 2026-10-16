@@ -210,6 +210,105 @@ const toClientDashboard = async (user) => ({
   cases: (await readCases()).filter((item) => item.clientEmail?.toLowerCase() === user.email.toLowerCase())
 })
 
+const escapeEmailHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character])
+
+const sendReminderEmail = async ({ to, recipientName, offsetHours, caseRecord, hearing }) => {
+  const apiKey = process.env.RESEND_API_KEY
+  const from = process.env.NOTIFICATION_FROM
+  if (!apiKey || !from) {
+    const error = new Error('Email reminders are not configured. Set RESEND_API_KEY and NOTIFICATION_FROM.')
+    error.statusCode = 503
+    throw error
+  }
+  const hearingDate = new Date(hearing.hearingDate)
+  const formattedDate = new Intl.DateTimeFormat('en-NG', { dateStyle: 'full', timeStyle: 'short', timeZone: 'Africa/Lagos' }).format(hearingDate)
+  const safe = {
+    name: escapeEmailHtml(recipientName || 'Client'),
+    caseNumber: escapeEmailHtml(caseRecord.caseNumber),
+    title: escapeEmailHtml(caseRecord.title),
+    court: escapeEmailHtml(caseRecord.court),
+    purpose: escapeEmailHtml(hearing.purpose || 'Hearing'),
+    date: escapeEmailHtml(formattedDate)
+  }
+  const subject = `Hearing reminder (${offsetHours} hours): ${caseRecord.caseNumber}`
+  const text = `This is a reminder that ${safe.purpose} for ${caseRecord.caseNumber} — ${caseRecord.title} is scheduled in about ${offsetHours} hours.\nCourt: ${caseRecord.court}\nDate and time: ${formattedDate}.`
+  const html = `<p>Hello ${safe.name},</p><p>This is a reminder that <strong>${safe.purpose}</strong> for <strong>${safe.caseNumber} — ${safe.title}</strong> is scheduled in about ${offsetHours} hours.</p><p><strong>Court:</strong> ${safe.court}<br><strong>Date and time:</strong> ${safe.date} (West Africa Time)</p><p>Please contact the council if you have questions.</p>`
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: [to], subject, text, html }),
+    signal: AbortSignal.timeout(10000)
+  })
+  if (!response.ok) {
+    const error = new Error('The email provider could not deliver a hearing reminder.')
+    error.statusCode = 502
+    throw error
+  }
+}
+
+const sendDueHearingReminders = async (now = Date.now()) => {
+  if (!process.env.RESEND_API_KEY || !process.env.NOTIFICATION_FROM) {
+    const error = new Error('Email reminders are not configured. Set RESEND_API_KEY and NOTIFICATION_FROM.')
+    error.statusCode = 503
+    throw error
+  }
+  const barristerEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase()
+  if (!barristerEmail) {
+    const error = new Error('ADMIN_EMAIL must be set before sending hearing reminders.')
+    error.statusCode = 503
+    throw error
+  }
+  const [cases, users] = await Promise.all([readCases(), readUsers()])
+  const usersByEmail = new Map(users.map((user) => [String(user.email || '').toLowerCase(), user]))
+  let checked = 0
+  let sent = 0
+  let failed = 0
+
+  for (const caseRecord of cases) {
+    for (const hearing of caseRecord.hearings || []) {
+      if (hearing.status !== 'SCHEDULED') continue
+      const hearingTime = Date.parse(hearing.hearingDate)
+      if (!Number.isFinite(hearingTime) || hearingTime <= now) continue
+      checked += 1
+      const hoursUntil = (hearingTime - now) / (60 * 60 * 1000)
+      const clientEmail = String(caseRecord.clientEmail || '').trim().toLowerCase()
+      const client = usersByEmail.get(clientEmail)
+      const recipientGroups = new Map()
+      const addRecipient = (role, email) => {
+        const normalized = String(email || '').trim().toLowerCase()
+        if (!normalized) return
+        const group = recipientGroups.get(normalized) || { email: normalized, roles: [] }
+        group.roles.push(role)
+        recipientGroups.set(normalized, group)
+      }
+      addRecipient('barrister', barristerEmail)
+      addRecipient('client', clientEmail)
+
+      for (const offsetHours of [48, 24]) {
+        if (hoursUntil > offsetHours) continue
+        hearing.remindersSent = hearing.remindersSent || {}
+        const reminder = hearing.remindersSent[String(offsetHours)] || {}
+        for (const group of recipientGroups.values()) {
+          const pendingRoles = group.roles.filter((role) => !reminder[`${role}SentAt`])
+          if (!pendingRoles.length) continue
+          try {
+            const recipientName = group.roles.includes('client') ? client?.firstName || 'Client' : 'Barrister'
+            await sendReminderEmail({ to: group.email, recipientName, offsetHours, caseRecord, hearing })
+            const sentAt = new Date(now).toISOString()
+            for (const role of pendingRoles) reminder[`${role}SentAt`] = sentAt
+            hearing.remindersSent[String(offsetHours)] = reminder
+            await writeCases(cases)
+            sent += pendingRoles.length
+          } catch {
+            failed += pendingRoles.length
+          }
+        }
+      }
+    }
+  }
+  return { checked, sent, failed }
+}
+
 const createClientRecord = ({ firstName, lastName, email, phone, password }) => {
   const salt = randomBytes(16).toString('hex')
 
@@ -248,6 +347,20 @@ export const handler = async (request, response) => {
   try {
     if (request.method === 'GET' && apiPath === '/api/v1/health') {
       return json(response, 200, { status: 'ok', service: 'henry-turaso-law-council-api' })
+    }
+
+    if (request.method === 'GET' && apiPath === '/api/v1/cron/hearing-reminders') {
+      const expected = String(process.env.CRON_SECRET || '')
+      const authorization = String(request.headers.authorization || '')
+      const provided = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+      if (expected.length < 32) return json(response, 503, { message: 'The reminder trigger is not configured with a valid secret.' })
+      const expectedBytes = Buffer.from(expected)
+      const providedBytes = Buffer.from(provided)
+      if (expectedBytes.length !== providedBytes.length || !timingSafeEqual(expectedBytes, providedBytes)) {
+        return json(response, 401, { message: 'Authentication required.' })
+      }
+      const result = await sendDueHearingReminders()
+      return json(response, result.failed ? 502 : 200, result)
     }
 
     if (request.method === 'POST' && apiPath === '/api/v1/consultations') {

@@ -51,8 +51,10 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
       headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     })
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.message || 'The request could not be completed.')
+    const text = await response.text()
+    let result: Record<string, unknown> = {}
+    try { result = text ? JSON.parse(text) as Record<string, unknown> : {} } catch { /* use the HTTP status fallback */ }
+    if (!response.ok) throw new Error(typeof result.message === 'string' ? result.message : `The server returned ${response.status}. Please try again.`)
     return result
   }
 
@@ -258,7 +260,11 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
       let path = '/admin/cases'
       let body: unknown = Object.fromEntries(new FormData(form).entries())
       if (form.id === 'admin-case-note-form') path = `/admin/cases/${encodeURIComponent(selectedCaseId)}/notes`
-      if (form.id === 'admin-case-hearing-form') path = `/admin/cases/${encodeURIComponent(selectedCaseId)}/hearings`
+      if (form.id === 'admin-case-hearing-form') {
+        path = `/admin/cases/${encodeURIComponent(selectedCaseId)}/hearings`
+        const dateInput = form.elements.namedItem('hearingDate') as HTMLInputElement
+        body = { ...body as Record<string, FormDataEntryValue>, hearingDate: new Date(dateInput.value).toISOString() }
+      }
       if (form.id === 'admin-case-document-form') {
         const fileInput = form.elements.namedItem('documentFile') as HTMLInputElement
         const file = fileInput.files?.[0]

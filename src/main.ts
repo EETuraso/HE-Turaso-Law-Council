@@ -206,33 +206,56 @@ const renderAdminDashboard = (data: AdminDashboardData) => {
   if (!adminDashboard || !adminLoginForm) return
   adminLoginForm.hidden = true; adminDashboard.hidden = false; adminWorkspace?.render(data)
 }
+const readApiResult = async <T,>(response: Response): Promise<T> => {
+  const text = await response.text()
+  let result: Record<string, unknown> = {}
+  try { result = text ? JSON.parse(text) as Record<string, unknown> : {} } catch { /* report a useful fallback below */ }
+  if (!response.ok) {
+    const message = typeof result.message === 'string' ? result.message : `The server returned ${response.status}. Please try again.`
+    throw new Error(message)
+  }
+  return result as T
+}
 const restoreAdminSession = async () => {
   const token = localStorage.getItem(adminTokenKey)
   if (!token) return
+  const note = adminLoginForm?.querySelector<HTMLParagraphElement>('.form-note')
+  const submit = adminLoginForm?.querySelector<HTMLButtonElement>('button[type="submit"]')
+  if (submit) submit.disabled = true
+  if (note) note.textContent = 'Checking your saved session...'
   try {
     const response = await fetch(`${apiBase}/admin/dashboard`, { headers: { Authorization: `Bearer ${token}` } })
-    if (!response.ok) throw new Error('Session expired')
-    renderAdminDashboard(await response.json())
-  } catch { localStorage.removeItem(adminTokenKey) }
+    renderAdminDashboard(await readApiResult<AdminDashboardData>(response))
+  } catch {
+    localStorage.removeItem(adminTokenKey)
+    if (note) note.textContent = 'Your saved session expired. Sign in to continue.'
+  } finally { if (submit) submit.disabled = false }
 }
 if (adminLoginForm && adminDashboard) {
-  restoreAdminSession()
+  const restoreSession = restoreAdminSession()
   adminLoginForm.addEventListener('submit', async (event) => {
     event.preventDefault()
+    await restoreSession
     const form = event.currentTarget as HTMLFormElement
     const email = form.elements.namedItem('admin-email') as HTMLInputElement
     const password = form.elements.namedItem('admin-password') as HTMLInputElement
     const note = form.querySelector<HTMLParagraphElement>('.form-note')!
+    const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!
     note.textContent = 'Signing in...'
+    submit.disabled = true
     try {
-      const response = await fetch(`${apiBase}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.value, password: password.value }) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'Unable to sign in.')
-      localStorage.setItem(adminTokenKey, result.accessToken)
+      const response = await fetch(`${apiBase}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.value.trim().toLowerCase(), password: password.value }) })
+      const result = await readApiResult<{ accessToken?: string; user?: { role?: string } }>(response)
+      if (!result.accessToken || result.user?.role !== 'ADMIN') throw new Error('This sign-in is for administrator accounts only.')
       const dashboardResponse = await fetch(`${apiBase}/admin/dashboard`, { headers: { Authorization: `Bearer ${result.accessToken}` } })
-      if (!dashboardResponse.ok) throw new Error('Unable to load the admin dashboard.')
-      renderAdminDashboard(await dashboardResponse.json())
-    } catch (error) { note.textContent = error instanceof Error ? error.message : 'Unable to sign in.' }
+      const dashboard = await readApiResult<AdminDashboardData>(dashboardResponse)
+      localStorage.setItem(adminTokenKey, result.accessToken)
+      note.textContent = ''
+      renderAdminDashboard(dashboard)
+    } catch (error) {
+      localStorage.removeItem(adminTokenKey)
+      note.textContent = error instanceof Error ? error.message : 'Unable to sign in.'
+    } finally { submit.disabled = false }
   })
   document.querySelector<HTMLButtonElement>('#admin-logout')?.addEventListener('click', async () => {
     const token = localStorage.getItem(adminTokenKey)

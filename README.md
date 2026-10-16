@@ -50,3 +50,22 @@ Vercel API at `https://barr-henry-law-council.vercel.app/api/v1`. Keep that URL
 in sync with the production Vercel domain. The Vercel deployment must also have
 the production environment variables listed above and a configured Supabase
 project.
+
+## Hearing reminders
+
+Scheduled hearings generate separate email reminders for the assigned client
+and the barrister at 48 hours and 24 hours before the hearing. The GitHub Actions
+dispatcher checks every 15 minutes and is disabled until explicitly enabled.
+Configure these Vercel Production environment variables:
+
+- `CRON_SECRET`: a random secret of at least 32 characters.
+- `RESEND_API_KEY`: an API key for a Resend account.
+- `NOTIFICATION_FROM`: a sender address verified by Resend, such as
+  `Henry E Turaso Law Council <notices@example.com>`.
+
+Then add the same value as `CRON_SECRET` to the GitHub repository Actions secret
+`REMINDER_CRON_SECRET`, and set the repository Actions variable
+`HEARING_REMINDERS_ENABLED` to `true`. Resend must have a verified sender domain
+before reminders can be delivered. GitHub scheduled runs can be delayed during
+high load; the dispatcher catches up on its next run and avoids sending the
+same recipient/reminder twice.
