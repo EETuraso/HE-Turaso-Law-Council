@@ -42,6 +42,19 @@ Uploaded documents are limited to 3 MB so they fit within Vercel's function
 request size limit. Local development can continue using the existing local API
 and `server/data` files when Supabase variables are not set.
 
+## Custom domain
+
+The production Vercel project is already attached to `heturasolawcouncil.name.ng`.
+Vercel currently reports an invalid DNS configuration. At the domain's DNS
+provider, point the root (`@`) to both Vercel IPv4 addresses:
+
+- `A` — `@` — `216.198.79.1`
+- `A` — `@` — `64.29.17.1`
+
+Remove conflicting root A or AAAA records, save the DNS changes, then verify the
+domain in Vercel Project Settings → Domains. DNS changes may take time to
+propagate. The domain remains attached to Vercel so the site and API share the
+same host once DNS is correct.
 ## GitHub Pages deployment
 
 The GitHub Pages workflow builds the Vite site and publishes `dist/`. Because

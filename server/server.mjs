@@ -138,6 +138,12 @@ const verifyPassword = (password, user) => {
   return timingSafeEqual(expected, actual)
 }
 
+const safeStringEqual = (left, right) => {
+  const leftBytes = Buffer.from(String(left || ''))
+  const rightBytes = Buffer.from(String(right || ''))
+  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes)
+}
+
 const makeToken = async (userId, role) => {
   const token = randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -620,8 +626,21 @@ export const handler = async (request, response) => {
       const password = String(body.password || '')
       const user = await findUserByEmail(email)
 
-      if (!user || user.role !== 'ADMIN' || !verifyPassword(password, user)) {
+      if (!user || user.role !== 'ADMIN') {
         return json(response, 401, { message: 'Invalid admin email or password.' })
+      }
+
+      if (!verifyPassword(password, user)) {
+        const configuredEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase()
+        const configuredPassword = process.env.ADMIN_PASSWORD || ''
+        if (email !== configuredEmail || !configuredPassword || !safeStringEqual(password, configuredPassword)) {
+          return json(response, 401, { message: 'Invalid admin email or password.' })
+        }
+
+        // Repair a stale database hash only after the configured admin password succeeds.
+        user.passwordSalt = randomBytes(16).toString('hex')
+        user.passwordHash = hashPassword(configuredPassword, user.passwordSalt)
+        await writeUsers([user])
       }
 
       return json(response, 200, {
