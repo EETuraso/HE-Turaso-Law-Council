@@ -58,6 +58,8 @@ const defaultAdminSettings = () => ({
   contactPhone: '',
   appointmentPolicy: 'By appointment',
   timezone: 'Africa/Lagos',
+  timeFormat: '12',
+  siteContent: { overrides: [], theme: { gold: '#c6a15b', deep: '#0b2227', ink: '#102d31', muted: '#647275', paper: '#f8f7f3', sand: '#ece8df', line: '#d8d9d3', font: 'Manrope' } },
   notificationFrom: String(process.env.NOTIFICATION_FROM || '').trim(),
   remindersEnabled: true,
   reminder48Enabled: true,
@@ -413,7 +415,9 @@ export const handler = async (request, response) => {
         contactEmail: settings.contactEmail,
         contactPhone: settings.contactPhone,
         appointmentPolicy: settings.appointmentPolicy,
-        timezone: settings.timezone
+        timezone: settings.timezone,
+        timeFormat: settings.timeFormat,
+        siteContent: settings.siteContent
       } })
     }
 
@@ -482,6 +486,33 @@ export const handler = async (request, response) => {
         if (typeof body[field] !== 'boolean') return json(response, 400, { message: 'Reminder options must be enabled or disabled.' })
         settings[field] = body[field]
       }
+      if (!['12', '24'].includes(body.timeFormat)) return json(response, 400, { message: 'Choose 12-hour or 24-hour time.' })
+      settings.timeFormat = body.timeFormat
+      const siteContent = body.siteContent
+      if (!siteContent || typeof siteContent !== 'object' || Array.isArray(siteContent) || !Array.isArray(siteContent.overrides) || siteContent.overrides.length > 250 || !siteContent.theme || typeof siteContent.theme !== 'object' || Array.isArray(siteContent.theme)) {
+        return json(response, 400, { message: 'Provide valid website content settings.' })
+      }
+      const allowedOverrideFields = new Set(['selector', 'text', 'href', 'src', 'alt', 'title', 'placeholder', 'content', 'ariaLabel', 'value', 'hidden'])
+      const safeUrl = (value) => /^(https?:\/\/|mailto:|tel:|\/|#)/i.test(value) && !/^javascript:/i.test(value)
+      for (const override of siteContent.overrides) {
+        if (!override || typeof override !== 'object' || Array.isArray(override) || Object.keys(override).some((key) => !allowedOverrideFields.has(key)) || typeof override.selector !== 'string' || !override.selector.trim() || override.selector.length > 240) {
+          return json(response, 400, { message: 'Each website content rule needs a valid selector and supported fields.' })
+        }
+        for (const field of ['text', 'href', 'src', 'alt', 'title', 'placeholder', 'content', 'ariaLabel', 'value']) {
+          if (override[field] !== undefined && (typeof override[field] !== 'string' || override[field].length > 3000)) return json(response, 400, { message: 'A website content value is invalid or too long.' })
+        }
+        for (const field of ['href', 'src']) {
+          if (override[field] && !safeUrl(override[field])) return json(response, 400, { message: 'Website links and images must use a safe URL.' })
+        }
+        if (override.hidden !== undefined && typeof override.hidden !== 'boolean') return json(response, 400, { message: 'Website visibility settings must be true or false.' })
+      }
+      const theme = siteContent.theme
+      const allowedThemeColors = ['gold', 'deep', 'ink', 'muted', 'paper', 'sand', 'line']
+      if (allowedThemeColors.some((field) => typeof theme[field] !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(theme[field])) || !['Manrope', 'Arial', 'Georgia', 'system-ui'].includes(theme.font)) {
+        return json(response, 400, { message: 'Choose valid theme colors and a supported font.' })
+      }
+      if (JSON.stringify(siteContent).length > 100000) return json(response, 400, { message: 'Website content settings exceed the 100 KB limit.' })
+      settings.siteContent = { overrides: siteContent.overrides, theme: { ...theme } }
       const maxLengths = { councilName: 120, principalName: 120, tagline: 240, chamberName: 160, officeAddress: 300, contactEmail: 254, contactPhone: 40, appointmentPolicy: 240, timezone: 64, notificationFrom: 254 }
       if (Object.entries(maxLengths).some(([field, max]) => settings[field].length > max)) {
         return json(response, 400, { message: 'One or more settings exceed the allowed length.' })

@@ -14,7 +14,8 @@ export type AdminCase = {
 
 export type AdminSettings = {
   councilName: string; principalName: string; tagline: string; chamberName: string; officeAddress: string
-  contactEmail: string; contactPhone: string; appointmentPolicy: string; timezone: string; notificationFrom: string
+  contactEmail: string; contactPhone: string; appointmentPolicy: string; timezone: string; timeFormat: '12' | '24'; notificationFrom: string
+  siteContent: { overrides: Array<{ selector: string; text?: string; href?: string; src?: string; alt?: string; title?: string; placeholder?: string; content?: string; ariaLabel?: string; value?: string; hidden?: boolean }>; theme: { gold: string; deep: string; ink: string; muted: string; paper: string; sand: string; line: string; font: string } }
   remindersEnabled: boolean; reminder48Enabled: boolean; reminder24Enabled: boolean
 }
 
@@ -188,6 +189,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
           <label>Contact email<input name="contactEmail" type="email" required maxlength="254" value="${escapeHTML(settings.contactEmail)}"></label>
           <label>Contact phone<input name="contactPhone" type="tel" maxlength="40" value="${escapeHTML(settings.contactPhone)}"></label>
           <label>Time zone<select name="timezone"><option value="Africa/Lagos" ${settings.timezone === 'Africa/Lagos' ? 'selected' : ''}>Africa/Lagos</option><option value="UTC" ${settings.timezone === 'UTC' ? 'selected' : ''}>UTC</option><option value="Africa/Accra" ${settings.timezone === 'Africa/Accra' ? 'selected' : ''}>Africa/Accra</option><option value="Africa/Johannesburg" ${settings.timezone === 'Africa/Johannesburg' ? 'selected' : ''}>Africa/Johannesburg</option><option value="Europe/London" ${settings.timezone === 'Europe/London' ? 'selected' : ''}>Europe/London</option></select></label>
+          <label>Clock format<select name="timeFormat"><option value="12" ${settings.timeFormat === '12' ? 'selected' : ''}>12-hour</option><option value="24" ${settings.timeFormat === '24' ? 'selected' : ''}>24-hour</option></select></label>
           <label>Appointment policy<input name="appointmentPolicy" required maxlength="240" value="${escapeHTML(settings.appointmentPolicy)}"></label>
         </div><label class="admin-settings-wide">Office address<input name="officeAddress" required maxlength="300" value="${escapeHTML(settings.officeAddress)}"></label></section>
         <section class="admin-panel"><span class="eyebrow">Hearing notifications</span><h2>Reminder schedule</h2><p class="admin-settings-description">Email reminders are sent to the barrister and assigned client when email delivery is configured.</p>
@@ -197,18 +199,34 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
           <label class="admin-settings-wide">Verified sender address<input name="notificationFrom" type="text" maxlength="254" placeholder="Council <notices@example.com>" value="${escapeHTML(settings.notificationFrom)}"><small>The sender must be verified with your email provider. The provider API key stays in Vercel and is never shown here.</small></label>
           <div class="admin-integration-status"><div><span class="eyebrow">Email delivery</span><strong>${integrationStatus(data.integrations.emailConfigured)}</strong><small>${data.integrations.emailConfigured ? 'Provider key and sender are available.' : 'Add RESEND_API_KEY in Vercel Production; set a verified sender above.'}</small></div><div><span class="eyebrow">Reminder trigger</span><strong>${integrationStatus(data.integrations.cronConfigured)}</strong><small>${data.integrations.cronConfigured ? 'The server trigger secret is set.' : 'CRON_SECRET is still required in Vercel and GitHub Actions.'}</small></div></div>
         </section>
+        <section class="admin-panel admin-site-content-panel"><span class="eyebrow">Website editor</span><h2>Website content and theme</h2><p class="admin-settings-description">Configure content, links, images, visibility, and site colors without editing code. Use CSS selectors to target page elements. Text changes preserve nested links and emphasis. Maximum 250 rules and 100 KB.</p><label class="admin-settings-wide">Content rules and theme (JSON)<textarea name="siteContent" rows="18" spellcheck="false">${escapeHTML(JSON.stringify(settings.siteContent, null, 2))}</textarea><small>Rules support selector, text, href, src, alt, title, placeholder, content, ariaLabel, value, or hidden. Theme colors are six-digit hex values. Example: {&quot;selector&quot;:&quot;.hero-intro&quot;,&quot;text&quot;:&quot;New introduction&quot;}.</small></label></section>
         <div class="admin-settings-actions"><button class="admin-primary-action" type="submit">Save settings</button><p class="admin-inline-note" role="status">${escapeHTML(settingsNotice)}</p></div>
       </form>
     `
   }
 
   const updateClock = () => {
-    const clock = root.querySelector<HTMLTimeElement>('#admin-clock')
+    const clock = root.querySelector<HTMLElement>('#admin-clock')
     if (!clock) return
     const now = new Date()
-    clock.dateTime = now.toISOString()
-    try { clock.textContent = new Intl.DateTimeFormat('en-NG', { dateStyle: 'medium', timeStyle: 'medium', timeZone: data?.settings?.timezone || 'Africa/Lagos' }).format(now) }
-    catch { clock.textContent = new Intl.DateTimeFormat('en-NG', { dateStyle: 'medium', timeStyle: 'medium' }).format(now) }
+
+    const timezone = data?.settings?.timezone || 'Africa/Lagos'
+    const use24Hour = data?.settings?.timeFormat === '24'
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: timezone }).format(now))
+    const minute = Number(new Intl.DateTimeFormat('en-GB', { minute: '2-digit', timeZone: timezone }).format(now))
+    const second = Number(new Intl.DateTimeFormat('en-GB', { second: '2-digit', timeZone: timezone }).format(now))
+    const hourHand = clock.querySelector<SVGLineElement>('[data-clock-hour]')
+    const minuteHand = clock.querySelector<SVGLineElement>('[data-clock-minute]')
+    const secondHand = clock.querySelector<SVGLineElement>('[data-clock-second]')
+    if (hourHand) hourHand.setAttribute('transform', `rotate(${(hour % 12) * 30 + minute * 0.5} 50 50)`)
+    if (minuteHand) minuteHand.setAttribute('transform', `rotate(${minute * 6 + second * 0.1} 50 50)`)
+    if (secondHand) secondHand.setAttribute('transform', `rotate(${second * 6} 50 50)`)
+    const digital = clock.querySelector<HTMLTimeElement>('[data-clock-digital]')
+    const date = clock.querySelector<HTMLElement>('[data-clock-date]')
+    const dateTime = new Intl.DateTimeFormat('en-NG', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: !use24Hour, timeZone: timezone })
+    const dateFormat = new Intl.DateTimeFormat('en-NG', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', timeZone: timezone })
+    if (digital) { digital.dateTime = now.toISOString(); digital.textContent = dateTime.format(now) }
+    if (date) date.textContent = dateFormat.format(now)
   }
   window.setInterval(updateClock, 1000)
 
@@ -323,6 +341,8 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
         const settingsForm = form as HTMLFormElement
         body = {
           ...Object.fromEntries(new FormData(settingsForm).entries()),
+          timeFormat: (settingsForm.elements.namedItem('timeFormat') as HTMLSelectElement).value,
+          siteContent: JSON.parse((settingsForm.elements.namedItem('siteContent') as HTMLTextAreaElement).value),
           remindersEnabled: (settingsForm.elements.namedItem('remindersEnabled') as HTMLInputElement).checked,
           reminder48Enabled: (settingsForm.elements.namedItem('reminder48Enabled') as HTMLInputElement).checked,
           reminder24Enabled: (settingsForm.elements.namedItem('reminder24Enabled') as HTMLInputElement).checked
