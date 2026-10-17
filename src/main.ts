@@ -58,18 +58,30 @@ const applySiteContent = (siteContent: { overrides?: Array<Record<string, unknow
   for (const [key, variable] of Object.entries(cssColors)) if (/^#[0-9a-fA-F]{6}$/.test(theme[key] || '')) document.documentElement.style.setProperty(variable, theme[key])
   if (['Manrope', 'Arial', 'Georgia', 'system-ui'].includes(theme.font)) document.body.style.fontFamily = theme.font
   for (const rule of siteContent.overrides || []) {
-    if (typeof rule.selector !== 'string') continue
+    if (typeof rule.selector !== 'string' || (typeof rule.page === 'string' && rule.page !== page)) continue
     try {
       document.querySelectorAll<HTMLElement>(rule.selector).forEach((element) => {
         for (const field of ['text', 'alt', 'title', 'placeholder', 'content', 'ariaLabel'] as const) if (typeof rule[field] === 'string') {
-          if (field === 'text') {
+          if (field === 'text' && rule.replaceText === true) element.textContent = rule[field] as string
+          else if (field === 'text') {
             const directText = Array.from(element.childNodes).find((node) => node.nodeType === Node.TEXT_NODE)
             if (directText) directText.textContent = rule[field] as string
             else element.insertBefore(document.createTextNode(rule[field] as string), element.firstChild)
           } else element.setAttribute(field === 'ariaLabel' ? 'aria-label' : field, rule[field] as string)
         }
-        if (typeof rule.value === 'string' && element instanceof HTMLInputElement) element.value = rule.value
-        for (const field of ['href', 'src'] as const) if (typeof rule[field] === 'string' && /^(https?:\/\/|mailto:|tel:|\/|#)/i.test(rule[field] as string)) element.setAttribute(field, rule[field] as string)
+        if (typeof rule.value === 'string' && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement)) element.value = rule.value
+        for (const field of ['href', 'src'] as const) if (typeof rule[field] === 'string') {
+          const value = rule[field] as string
+          if (value && /^(https?:\/\/|mailto:|tel:|\/|#)/i.test(value)) element.setAttribute(field, value)
+          else if (!value) element.removeAttribute(field)
+        }
+        if (typeof rule.background === 'string') {
+          const imageValue = /^https?:\/\//i.test(rule.background) ? 'url("' + rule.background.replace(/["\\]/g, '') + '")' : 'none'
+          element.style.backgroundImage = imageValue
+          if (element.classList.contains('hero')) element.style.setProperty('--site-editor-background-image', imageValue)
+        }
+        if (typeof rule.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(rule.color)) element.style.color = rule.color
+        if (typeof rule.backgroundColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(rule.backgroundColor)) element.style.backgroundColor = rule.backgroundColor
         if (typeof rule.hidden === 'boolean') element.hidden = rule.hidden
       })
     } catch { /* Ignore a bad selector and continue applying website settings. */ }
@@ -83,7 +95,7 @@ const loadPublicSettings = async () => {
     const result = await response.json() as { settings?: { councilName?: string; principalName?: string; tagline?: string; officeAddress?: string; contactEmail?: string; contactPhone?: string; appointmentPolicy?: string; siteContent?: { overrides?: Array<Record<string, unknown>>; theme?: Record<string, string> } } }
     const settings = result.settings
     if (!settings) return
-    if (settings.siteContent) applySiteContent(settings.siteContent)
+    if (settings.siteContent && !new URLSearchParams(location.search).has('visualClean')) applySiteContent(settings.siteContent)
     document.querySelectorAll<HTMLElement>('[data-public-principal]').forEach((node) => { node.textContent = settings.principalName || '' })
     document.querySelectorAll<HTMLElement>('[data-public-council-name]').forEach((node) => { node.textContent = settings.councilName || '' })
     document.querySelectorAll<HTMLElement>('[data-public-council-label]').forEach((node) => { node.textContent = (settings.councilName || '').replace(settings.principalName || '', '').trim() })
@@ -99,9 +111,68 @@ const loadPublicSettings = async () => {
     }
     const appointment = document.querySelector<HTMLElement>('[data-public-appointment-policy]')
     if (appointment) appointment.textContent = settings.appointmentPolicy || ''
+    if (settings.siteContent && !new URLSearchParams(location.search).has('visualClean')) applySiteContent(settings.siteContent)
   } catch { /* Keep the static profile if the settings API is temporarily unavailable. */ }
 }
-void loadPublicSettings()
+const visualEditorMode = new URLSearchParams(location.search).get('visualEditor') === '1'
+if (visualEditorMode) {
+  document.documentElement.classList.add('visual-edit-mode')
+  let selectedVisualElement: HTMLElement | null = null
+  const elementSelector = (element: HTMLElement) => {
+    if (element.id) return `#${CSS.escape(element.id)}`
+    const segments: string[] = []
+    let current: HTMLElement | null = element
+    while (current && current !== document.body) {
+      if (current.id) { segments.unshift(`#${CSS.escape(current.id)}`); break }
+      const tag = current.tagName.toLowerCase()
+      const siblings = current.parentElement ? Array.from(current.parentElement.children).filter((child) => child.tagName === current!.tagName) : []
+      segments.unshift(`${tag}:nth-of-type(${siblings.indexOf(current) + 1})`)
+      current = current.parentElement
+    }
+    return `body > ${segments.join(' > ')}`
+  }
+  const applyVisualRule = (rule: Record<string, unknown>) => applySiteContent({ overrides: [rule] })
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (event.source !== window.parent || event.origin !== location.origin || !event.data) return
+    if (event.data.type === 'SITE_EDITOR_RULES' && Array.isArray(event.data.rules)) {
+      applySiteContent({ overrides: event.data.rules, theme: event.data.theme })
+      event.data.rules.forEach(applyVisualRule)
+    }
+    if (event.data.type === 'SITE_EDITOR_RULE' && event.data.rule) applyVisualRule(event.data.rule)
+    if (event.data.type === 'SITE_EDITOR_THEME') applySiteContent({ overrides: [], theme: event.data.theme })
+    if (event.data.type === 'SITE_EDITOR_SHOW_HIDDEN') document.documentElement.classList.toggle('site-editor-show-hidden', Boolean(event.data.enabled))
+  })
+  document.addEventListener('click', (event) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const element = target.closest<HTMLElement>('h1,h2,h3,h4,h5,p,a,button,img,video,iframe,section,article,header,footer,nav,label,input,textarea,select,li,span,em,strong,small,.brand,.hero-visual,.story-image')
+    if (!element) return
+    event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation()
+    if (selectedVisualElement) selectedVisualElement.removeAttribute('data-site-editor-selected')
+    selectedVisualElement = element
+    element.setAttribute('data-site-editor-selected', 'true')
+    const tag = element.tagName.toLowerCase()
+    const imageElement = ['img', 'iframe', 'video', 'source'].includes(tag)
+    const computed = getComputedStyle(element)
+    const hexColor = (value: string, fallback: string) => {
+      if (value.startsWith('#')) return value.slice(0, 7)
+      const rgb = value.match(/\d+/g)?.slice(0, 3).map((part) => Number(part).toString(16).padStart(2, '0'))
+      return rgb?.length === 3 ? `#${rgb.join('')}` : fallback
+    }
+    const backgroundMatch = computed.backgroundImage.match(/url\(["']?(.*?)["']?\)/)
+    const valueField = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement
+    const directText = Array.from(element.childNodes).find((node) => node.nodeType === Node.TEXT_NODE)
+    const editableText = valueField || (!imageElement && !['iframe', 'video'].includes(tag) && (element.children.length === 0 || Boolean(directText)))
+    const text = valueField ? (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value : element.children.length ? directText?.textContent?.trim() || '' : element.innerText.trim()
+    window.parent.postMessage({
+      type: 'SITE_EDITOR_SELECTED', page, selector: elementSelector(element), tag,
+      text, valueField, editableText, replaceText: element.children.length === 0, placeholder: element.getAttribute('placeholder') || '', href: element.getAttribute('href') || '', src: imageElement ? element.getAttribute('src') || '' : backgroundMatch?.[1] || '',
+      mediaField: imageElement ? 'src' : 'background', canLink: ['a', 'area'].includes(tag), canAlt: imageElement, canPlaceholder: ['input', 'textarea'].includes(tag), alt: element.getAttribute('alt') || '',
+      color: hexColor(computed.color, '#102d31'), backgroundColor: hexColor(computed.backgroundColor, '#ffffff'), hidden: element.hidden
+    }, location.origin)
+  }, true)
+  void loadPublicSettings().finally(() => window.parent.postMessage({ type: 'SITE_EDITOR_READY', page }, location.origin))
+} else void loadPublicSettings()
 
 const menuToggle = document.querySelector<HTMLButtonElement>('.menu-toggle')
 const nav = document.querySelector<HTMLElement>('.site-nav')

@@ -15,7 +15,7 @@ export type AdminCase = {
 export type AdminSettings = {
   councilName: string; principalName: string; tagline: string; chamberName: string; officeAddress: string
   contactEmail: string; contactPhone: string; appointmentPolicy: string; timezone: string; timeFormat: '12' | '24'; notificationFrom: string
-  siteContent: { overrides: Array<{ selector: string; text?: string; href?: string; src?: string; alt?: string; title?: string; placeholder?: string; content?: string; ariaLabel?: string; value?: string; hidden?: boolean }>; theme: { gold: string; deep: string; ink: string; muted: string; paper: string; sand: string; line: string; font: string } }
+  siteContent: { overrides: Array<{ selector: string; page?: string; text?: string; replaceText?: boolean; href?: string; src?: string; background?: string; alt?: string; title?: string; placeholder?: string; content?: string; ariaLabel?: string; value?: string; hidden?: boolean; color?: string; backgroundColor?: string }>; theme: { gold: string; deep: string; ink: string; muted: string; paper: string; sand: string; line: string; font: string } }
   remindersEnabled: boolean; reminder48Enabled: boolean; reminder24Enabled: boolean
 }
 
@@ -89,6 +89,70 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     reader.readAsDataURL(file)
   })
 
+  type VisualSelection = { page: string; selector: string; mediaField: 'src' | 'background'; valueField: boolean; replaceText: boolean }
+  let visualSelection: VisualSelection | null = null
+  const siteContentInput = () => root.querySelector<HTMLTextAreaElement>('[name="siteContent"]')
+  const readSiteContent = () => {
+    const input = siteContentInput()
+    return input ? JSON.parse(input.value) as AdminSettings['siteContent'] : data?.settings.siteContent
+  }
+  const saveVisualRule = (field: string, value: string | boolean) => {
+    if (!visualSelection) return
+    const siteContent = readSiteContent()
+    if (!siteContent) return
+    let rule = siteContent.overrides.find((item) => item.page === visualSelection?.page && item.selector === visualSelection?.selector)
+    if (!rule) {
+      rule = { page: visualSelection.page, selector: visualSelection.selector }
+      siteContent.overrides.push(rule)
+    }
+    if (field === 'text' && !visualSelection.valueField) rule.replaceText = visualSelection.replaceText
+    if (field === 'visible') rule.hidden = !value
+    else (rule as Record<string, unknown>)[field] = value
+    const input = siteContentInput()
+    if (input) input.value = JSON.stringify(siteContent)
+    const preview = root.querySelector<HTMLIFrameElement>('#site-editor-preview')
+    preview?.contentWindow?.postMessage({ type: 'SITE_EDITOR_RULE', rule }, location.origin)
+  }
+  const clearVisualSelection = () => {
+    visualSelection = null
+    const message = root.querySelector<HTMLElement>('#site-editor-selection')
+    if (message) message.textContent = 'Click an item in the preview to edit it.'
+    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('#site-editor-properties input, #site-editor-properties textarea').forEach((field) => { field.disabled = true })
+    const reset = root.querySelector<HTMLButtonElement>('#site-editor-reset')
+    if (reset) reset.disabled = true
+  }
+  window.addEventListener('message', (event: MessageEvent) => {
+    const preview = root.querySelector<HTMLIFrameElement>('#site-editor-preview')
+    if (!preview || event.source !== preview.contentWindow || event.origin !== location.origin || !event.data) return
+    if (event.data.type === 'SITE_EDITOR_READY') {
+      const siteContent = readSiteContent()
+      preview.contentWindow?.postMessage({ type: 'SITE_EDITOR_RULES', rules: siteContent?.overrides || [], theme: siteContent?.theme }, location.origin)
+      const showHidden = root.querySelector<HTMLInputElement>('#site-editor-show-hidden')
+      preview.contentWindow?.postMessage({ type: 'SITE_EDITOR_SHOW_HIDDEN', enabled: Boolean(showHidden?.checked) }, location.origin)
+      return
+    }
+    if (event.data.type !== 'SITE_EDITOR_SELECTED') return
+    visualSelection = { page: String(event.data.page), selector: String(event.data.selector), mediaField: event.data.mediaField === 'src' ? 'src' : 'background', valueField: Boolean(event.data.valueField), replaceText: Boolean(event.data.replaceText) }
+    const label = root.querySelector<HTMLElement>('#site-editor-selection')
+    if (label) label.textContent = `${String(event.data.tag).toUpperCase()} · ${visualSelection.page.replace('.html', '')}`
+    const setField = (id: string, value: string, enabled = true) => {
+      const field = root.querySelector<HTMLInputElement | HTMLTextAreaElement>(id)
+      if (field) { field.disabled = !enabled; field.value = value }
+    }
+    setField('#site-editor-text', String(event.data.text || ''))
+    const textField = root.querySelector<HTMLTextAreaElement>('#site-editor-text')
+    if (textField) textField.disabled = !event.data.editableText
+    setField('#site-editor-href', String(event.data.href || ''), Boolean(event.data.canLink))
+    setField('#site-editor-src', String(event.data.src || ''))
+    setField('#site-editor-alt', String(event.data.alt || ''), Boolean(event.data.canAlt))
+    setField('#site-editor-placeholder', String(event.data.placeholder || ''), Boolean(event.data.canPlaceholder))
+    setField('#site-editor-color', String(event.data.color || '#102d31'))
+    setField('#site-editor-background', String(event.data.backgroundColor || '#ffffff'))
+    const visible = root.querySelector<HTMLInputElement>('#site-editor-visible')
+    if (visible) { visible.disabled = false; visible.checked = !event.data.hidden }
+    const reset = root.querySelector<HTMLButtonElement>('#site-editor-reset')
+    if (reset) reset.disabled = false
+  })
   const refresh = async () => {
     data = await authorizedRequest('/admin/dashboard') as AdminDashboardData
     render()
@@ -199,7 +263,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
           <label class="admin-settings-wide">Verified sender address<input name="notificationFrom" type="text" maxlength="254" placeholder="Council <notices@example.com>" value="${escapeHTML(settings.notificationFrom)}"><small>The sender must be verified with your email provider. The provider API key stays in Vercel and is never shown here.</small></label>
           <div class="admin-integration-status"><div><span class="eyebrow">Email delivery</span><strong>${integrationStatus(data.integrations.emailConfigured)}</strong><small>${data.integrations.emailConfigured ? 'Provider key and sender are available.' : 'Add RESEND_API_KEY in Vercel Production; set a verified sender above.'}</small></div><div><span class="eyebrow">Reminder trigger</span><strong>${integrationStatus(data.integrations.cronConfigured)}</strong><small>${data.integrations.cronConfigured ? 'The server trigger secret is set.' : 'CRON_SECRET is still required in Vercel and GitHub Actions.'}</small></div></div>
         </section>
-        <section class="admin-panel admin-site-content-panel"><span class="eyebrow">Website editor</span><h2>Website content and theme</h2><p class="admin-settings-description">Configure content, links, images, visibility, and site colors without editing code. Use CSS selectors to target page elements. Text changes preserve nested links and emphasis. Maximum 250 rules and 100 KB.</p><label class="admin-settings-wide">Content rules and theme (JSON)<textarea name="siteContent" rows="18" spellcheck="false">${escapeHTML(JSON.stringify(settings.siteContent, null, 2))}</textarea><small>Rules support selector, text, href, src, alt, title, placeholder, content, ariaLabel, value, or hidden. Theme colors are six-digit hex values. Example: {&quot;selector&quot;:&quot;.hero-intro&quot;,&quot;text&quot;:&quot;New introduction&quot;}.</small></label></section>
+        <section class="admin-panel admin-site-content-panel"><span class="eyebrow">Website editor</span><h2>Edit the website visually</h2><p class="admin-settings-description">Choose a page, click any item in the preview, make your changes in the fields, then save settings. You can edit text, links, images, colors, and visibility without entering code.</p><div class="admin-site-theme"><strong>Site-wide colors and font</strong><div class="admin-site-theme-colors"><label>Accent<input type="color" data-site-theme="gold" value="${escapeHTML(settings.siteContent.theme.gold)}"></label><label>Dark background<input type="color" data-site-theme="deep" value="${escapeHTML(settings.siteContent.theme.deep)}"></label><label>Text<input type="color" data-site-theme="ink" value="${escapeHTML(settings.siteContent.theme.ink)}"></label><label>Muted text<input type="color" data-site-theme="muted" value="${escapeHTML(settings.siteContent.theme.muted)}"></label><label>Page background<input type="color" data-site-theme="paper" value="${escapeHTML(settings.siteContent.theme.paper)}"></label><label>Panel background<input type="color" data-site-theme="sand" value="${escapeHTML(settings.siteContent.theme.sand)}"></label><label>Border<input type="color" data-site-theme="line" value="${escapeHTML(settings.siteContent.theme.line)}"></label></div><label>Website font<select id="site-editor-font"><option value="Manrope" ${settings.siteContent.theme.font === 'Manrope' ? 'selected' : ''}>Manrope</option><option value="Arial" ${settings.siteContent.theme.font === 'Arial' ? 'selected' : ''}>Arial</option><option value="Georgia" ${settings.siteContent.theme.font === 'Georgia' ? 'selected' : ''}>Georgia</option><option value="system-ui" ${settings.siteContent.theme.font === 'system-ui' ? 'selected' : ''}>System</option></select></label></div><div class="admin-site-editor"><div class="admin-site-preview"><label>Page to edit<select id="site-editor-page"><option value="index.html">Home</option><option value="about.html">About</option><option value="practice-areas.html">Practice areas</option><option value="chamber.html">Chamber</option><option value="insights.html">Insights</option><option value="contact.html">Contact</option><option value="client-portal.html">Client portal</option></select></label><label class="admin-setting-toggle"><input id="site-editor-show-hidden" type="checkbox"> Show hidden items in preview</label><iframe id="site-editor-preview" title="Website preview editor" src="index.html?visualEditor=1"></iframe></div><div class="admin-site-properties" id="site-editor-properties"><strong>Selected item</strong><p id="site-editor-selection" aria-live="polite">Click an item in the preview to edit it.</p><label>Text<textarea id="site-editor-text" rows="4" disabled></textarea></label><label>Link address<input id="site-editor-href" type="text" disabled></label><label>Image address<input id="site-editor-src" type="text" disabled></label><label>Image description<input id="site-editor-alt" type="text" disabled></label><label>Form placeholder<input id="site-editor-placeholder" type="text" disabled></label><div class="admin-site-color-grid"><label>Text color<input id="site-editor-color" type="color" value="#102d31" disabled></label><label>Background color<input id="site-editor-background" type="color" value="#ffffff" disabled></label></div><label class="admin-setting-toggle"><input id="site-editor-visible" type="checkbox" checked disabled> Show this item</label><button id="site-editor-reset" class="admin-link-button" type="button" disabled>Discard changes to selected item</button></div></div><textarea hidden name="siteContent" aria-hidden="true">${escapeHTML(JSON.stringify(settings.siteContent, null, 2))}</textarea></section>
         <div class="admin-settings-actions"><button class="admin-primary-action" type="submit">Save settings</button><p class="admin-inline-note" role="status">${escapeHTML(settingsNotice)}</p></div>
       </form>
     `
@@ -290,11 +354,39 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
       catch (error) { window.alert(error instanceof Error ? error.message : 'Unable to download this document.') }
       return
     }
+    if (target.closest('#site-editor-reset')) {
+      const input = siteContentInput()
+      const selection = visualSelection
+      if (input && selection) {
+        const config = readSiteContent()
+        if (config) { config.overrides = config.overrides.filter((rule) => !(rule.page === selection.page && rule.selector === selection.selector)); input.value = JSON.stringify(config) }
+        clearVisualSelection()
+        const page = root.querySelector<HTMLSelectElement>('#site-editor-page')?.value || 'index.html'
+        const preview = root.querySelector<HTMLIFrameElement>('#site-editor-preview')
+        if (preview) preview.src = page + "?visualEditor=1&visualClean=1&t=" + Date.now()
+      }
+      return
+    }
     if (target.closest('[data-toggle-case-form]')) root.querySelector<HTMLFormElement>('#admin-create-case-form')?.toggleAttribute('hidden')
   })
 
   root.addEventListener('input', (event) => {
     const input = event.target
+    if (input instanceof HTMLInputElement && input.dataset.siteTheme) {
+      const siteContent = readSiteContent()
+      if (siteContent) {
+        ;(siteContent.theme as Record<string, string>)[input.dataset.siteTheme] = input.value
+        const configInput = siteContentInput()
+        if (configInput) configInput.value = JSON.stringify(siteContent)
+        root.querySelector<HTMLIFrameElement>('#site-editor-preview')?.contentWindow?.postMessage({ type: 'SITE_EDITOR_THEME', theme: siteContent.theme }, location.origin)
+      }
+      return
+    }
+    if ((input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) && visualSelection) {
+      const fields: Record<string, string> = { 'site-editor-text': visualSelection.valueField ? 'value' : 'text', 'site-editor-placeholder': 'placeholder', 'site-editor-href': 'href', 'site-editor-alt': 'alt', 'site-editor-color': 'color', 'site-editor-background': 'backgroundColor' }
+      if (input.id in fields) { saveVisualRule(fields[input.id], input.value); return }
+      if (input.id === 'site-editor-src') { saveVisualRule(visualSelection.mediaField, input.value); return }
+    }
     if (!(input instanceof HTMLInputElement)) return
     if (input.id === 'admin-case-search' && data) {
       const query = input.value.trim().toLowerCase()
@@ -310,6 +402,27 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
 
   root.addEventListener('change', async (event) => {
     const select = event.target
+    if (select instanceof HTMLSelectElement && select.id === 'site-editor-font') {
+      const siteContent = readSiteContent()
+      if (siteContent) {
+        siteContent.theme.font = select.value
+        const configInput = siteContentInput()
+        if (configInput) configInput.value = JSON.stringify(siteContent)
+        root.querySelector<HTMLIFrameElement>('#site-editor-preview')?.contentWindow?.postMessage({ type: 'SITE_EDITOR_THEME', theme: siteContent.theme }, location.origin)
+      }
+      return
+    }
+    if (select instanceof HTMLSelectElement && select.id === 'site-editor-page') {
+      clearVisualSelection()
+      const preview = root.querySelector<HTMLIFrameElement>('#site-editor-preview')
+      if (preview) preview.src = select.value + '?visualEditor=1'
+      return
+    }
+    if (select instanceof HTMLInputElement && select.id === 'site-editor-visible') { saveVisualRule('visible', select.checked); return }
+    if (select instanceof HTMLInputElement && select.id === 'site-editor-show-hidden') {
+      root.querySelector<HTMLIFrameElement>('#site-editor-preview')?.contentWindow?.postMessage({ type: 'SITE_EDITOR_SHOW_HIDDEN', enabled: select.checked }, location.origin)
+      return
+    }
     if (!(select instanceof HTMLSelectElement) || !select.dataset.consultationStatus) return
     try {
       await authorizedRequest(`/admin/consultations/${encodeURIComponent(select.dataset.consultationStatus)}/status`, { status: select.value })

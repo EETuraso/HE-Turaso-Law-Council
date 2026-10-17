@@ -66,7 +66,20 @@ const defaultAdminSettings = () => ({
   reminder24Enabled: true
 })
 
-const getAdminSettings = (admin) => ({ ...defaultAdminSettings(), ...(admin?.settings || {}) })
+const getAdminSettings = (admin) => {
+  const defaults = defaultAdminSettings()
+  const saved = admin?.settings || {}
+  return {
+    ...defaults,
+    ...saved,
+    siteContent: {
+      ...defaults.siteContent,
+      ...(saved.siteContent || {}),
+      overrides: Array.isArray(saved.siteContent?.overrides) ? saved.siteContent.overrides : defaults.siteContent.overrides,
+      theme: { ...defaults.siteContent.theme, ...(saved.siteContent?.theme || {}) }
+    }
+  }
+}
 
 const ensureUserStore = () => {
   mkdirSync(dataDir, { recursive: true })
@@ -492,18 +505,20 @@ export const handler = async (request, response) => {
       if (!siteContent || typeof siteContent !== 'object' || Array.isArray(siteContent) || !Array.isArray(siteContent.overrides) || siteContent.overrides.length > 250 || !siteContent.theme || typeof siteContent.theme !== 'object' || Array.isArray(siteContent.theme)) {
         return json(response, 400, { message: 'Provide valid website content settings.' })
       }
-      const allowedOverrideFields = new Set(['selector', 'text', 'href', 'src', 'alt', 'title', 'placeholder', 'content', 'ariaLabel', 'value', 'hidden'])
+      const allowedOverrideFields = new Set(['selector', 'page', 'text', 'replaceText', 'href', 'src', 'background', 'alt', 'title', 'placeholder', 'content', 'ariaLabel', 'value', 'hidden', 'color', 'backgroundColor'])
       const safeUrl = (value) => /^(https?:\/\/|mailto:|tel:|\/|#)/i.test(value) && !/^javascript:/i.test(value)
       for (const override of siteContent.overrides) {
-        if (!override || typeof override !== 'object' || Array.isArray(override) || Object.keys(override).some((key) => !allowedOverrideFields.has(key)) || typeof override.selector !== 'string' || !override.selector.trim() || override.selector.length > 240) {
+        if (!override || typeof override !== 'object' || Array.isArray(override) || Object.keys(override).some((key) => !allowedOverrideFields.has(key)) || typeof override.selector !== 'string' || !override.selector.trim() || override.selector.length > 240 || (override.page !== undefined && !['home', 'about', 'services', 'chamber', 'insights', 'contact', 'portal'].includes(override.page))) {
           return json(response, 400, { message: 'Each website content rule needs a valid selector and supported fields.' })
         }
-        for (const field of ['text', 'href', 'src', 'alt', 'title', 'placeholder', 'content', 'ariaLabel', 'value']) {
+        for (const field of ['text', 'href', 'src', 'background', 'alt', 'title', 'placeholder', 'content', 'ariaLabel', 'value']) {
           if (override[field] !== undefined && (typeof override[field] !== 'string' || override[field].length > 3000)) return json(response, 400, { message: 'A website content value is invalid or too long.' })
         }
-        for (const field of ['href', 'src']) {
+        for (const field of ['href', 'src', 'background']) {
           if (override[field] && !safeUrl(override[field])) return json(response, 400, { message: 'Website links and images must use a safe URL.' })
         }
+        if (override.replaceText !== undefined && typeof override.replaceText !== 'boolean') return json(response, 400, { message: 'Website text settings must be true or false.' })
+        for (const field of ['color', 'backgroundColor']) if (override[field] !== undefined && (typeof override[field] !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(override[field]))) return json(response, 400, { message: 'Choose valid website colors.' })
         if (override.hidden !== undefined && typeof override.hidden !== 'boolean') return json(response, 400, { message: 'Website visibility settings must be true or false.' })
       }
       const theme = siteContent.theme
