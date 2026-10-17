@@ -244,10 +244,17 @@ const serializeClient = ({ id, firstName, lastName, email, phone, role = 'CLIENT
   role
 })
 
-const toClientDashboard = async (user) => ({
-  client: sanitizeClient(user),
-  cases: (await readCases()).filter((item) => item.clientEmail?.toLowerCase() === user.email.toLowerCase())
-})
+const toClientDashboard = async (user) => {
+  const cases = (await readCases()).filter((item) => item.clientEmail?.toLowerCase() === user.email.toLowerCase())
+  return {
+    client: {
+      ...sanitizeClient(user),
+      legalActivity: user.legalActivity || '',
+      approvalStatus: user.approvalStatus || (cases.length ? 'APPROVED' : 'PENDING')
+    },
+    cases
+  }
+}
 
 const escapeEmailHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character])
 
@@ -361,7 +368,7 @@ const sendDueHearingReminders = async (now = Date.now()) => {
   return { checked, sent, failed }
 }
 
-const createClientRecord = ({ firstName, lastName, email, phone, password }) => {
+const createClientRecord = ({ firstName, lastName, email, phone, legalActivity, password }) => {
   const salt = randomBytes(16).toString('hex')
 
   return {
@@ -370,6 +377,8 @@ const createClientRecord = ({ firstName, lastName, email, phone, password }) => 
     lastName: String(lastName || '').trim(),
     email: String(email || '').trim().toLowerCase(),
     phone: String(phone || '').trim(),
+    legalActivity: String(legalActivity || '').trim(),
+    approvalStatus: 'PENDING',
     role: 'CLIENT',
     passwordSalt: salt,
     passwordHash: hashPassword(String(password), salt),
@@ -577,13 +586,16 @@ export const handler = async (request, response) => {
       const description = String(body.description || '').trim()
       if (!title || !caseType || !court) return json(response, 400, { message: 'Case title, practice area, and court are required.' })
       if ([title, caseType, court, description].some((value) => value.length > 2000)) return json(response, 400, { message: 'A case field exceeds the allowed length.' })
-      if (clientEmail && !(await readUsers()).some((user) => user.role === 'CLIENT' && user.email.toLowerCase() === clientEmail)) {
+      const users = await readUsers()
+      const assignedClient = clientEmail ? users.find((user) => user.role === 'CLIENT' && user.email.toLowerCase() === clientEmail) : null
+      if (clientEmail && !assignedClient) {
         return json(response, 400, { message: 'No registered client matches that email.' })
       }
       const cases = await readCases()
+      const nextNumber = cases.reduce((max, item) => Math.max(max, Number(String(item.caseNumber || '').match(/-(\d+)$/)?.[1] || 0)), 0) + 1
       const caseRecord = {
         id: `case-${Date.now()}-${randomBytes(5).toString('hex')}`,
-        caseNumber: `HET-${new Date().getFullYear()}-${String(cases.length + 1).padStart(5, '0')}`,
+        caseNumber: `HET-${new Date().getFullYear()}-${String(nextNumber).padStart(5, '0')}`,
         title,
         caseType,
         court,
@@ -593,10 +605,53 @@ export const handler = async (request, response) => {
         hearings: [],
         notes: [],
         documents: [],
+        messages: [],
         createdAt: new Date().toISOString()
       }
       cases.unshift(caseRecord)
-      await writeCases(cases)
+      if (assignedClient) {
+        assignedClient.approvalStatus = 'APPROVED'
+        assignedClient.approvedCaseId = caseRecord.id
+      }
+      await Promise.all([writeCases(cases), assignedClient ? writeUsers(users) : Promise.resolve()])
+      return json(response, 201, { case: caseRecord })
+    }
+
+    const approveClientRoute = apiPath.match(/^\/api\/v1\/admin\/clients\/([^/]+)\/approve$/)
+    if (request.method === 'POST' && approveClientRoute) {
+      const session = await getSessionUser(request)
+      if (!session || session.role !== 'ADMIN') return json(response, 403, { message: 'Administrator access required.' })
+      const body = await readBody(request)
+      const title = String(body.title || '').trim()
+      const court = String(body.court || '').trim()
+      if (!title || !court || title.length > 160 || court.length > 160) return json(response, 400, { message: 'Enter a matter title and court or venue.' })
+      const clientId = decodeURIComponent(approveClientRoute[1])
+      const users = await readUsers()
+      const client = users.find((user) => user.id === clientId && user.role === 'CLIENT')
+      if (!client) return json(response, 404, { message: 'Client request not found.' })
+      if (client.approvalStatus === 'APPROVED') return json(response, 409, { message: 'This client already has an approved matter.' })
+      const cases = await readCases()
+      const nextNumber = cases.reduce((max, item) => Math.max(max, Number(String(item.caseNumber || '').match(/-(\d+)$/)?.[1] || 0)), 0) + 1
+      const caseRecord = {
+        id: `case-${Date.now()}-${randomBytes(5).toString('hex')}`,
+        caseNumber: `HET-${new Date().getFullYear()}-${String(nextNumber).padStart(5, '0')}`,
+        title,
+        caseType: client.legalActivity || 'Legal advisory',
+        court,
+        status: 'ACTIVE',
+        description: `Client requested assistance with ${client.legalActivity || 'legal services'}.`,
+        clientEmail: client.email,
+        hearings: [],
+        notes: [],
+        documents: [],
+        messages: [],
+        createdAt: new Date().toISOString()
+      }
+      cases.unshift(caseRecord)
+      client.approvalStatus = 'APPROVED'
+      client.approvedCaseId = caseRecord.id
+      client.approvedAt = new Date().toISOString()
+      await Promise.all([writeCases(cases), writeUsers(users)])
       return json(response, 201, { case: caseRecord })
     }
 
@@ -670,8 +725,9 @@ export const handler = async (request, response) => {
       const documentId = decodeURIComponent(documentDownloadRoute[1])
       const document = (await readCases()).flatMap((item) => item.documents || []).find((item) => item.id === documentId)
       if (!document) return json(response, 404, { message: 'Document not found.' })
+      const viewInline = requestUrl.searchParams.get('view') === '1'
       if (useSupabase) {
-        const result = await supabaseRequest(`/storage/v1/object/sign/law-documents/${document.storageName}`, { method: 'POST', body: JSON.stringify({ expiresIn: 60 }) })
+        const result = await supabaseRequest(`/storage/v1/object/sign/law-documents/${document.storageName}`, { method: 'POST', body: JSON.stringify({ expiresIn: 60, download: viewInline ? false : document.fileName }) })
         const signedURL = String(result.signedURL || '')
         const url = signedURL.startsWith('http')
           ? signedURL
@@ -680,8 +736,58 @@ export const handler = async (request, response) => {
       }
       const fileBytes = readFileSync(join(documentsDir, document.storageName))
       const downloadName = document.fileName.replace(/[\r\n\"]+/g, '_')
-      response.writeHead(200, { 'Content-Type': document.mimeType, 'Content-Disposition': `attachment; filename="${downloadName}"`, 'Content-Length': fileBytes.length, 'Access-Control-Allow-Origin': '*' })
+      response.writeHead(200, { 'Content-Type': document.mimeType, 'Content-Disposition': `${viewInline ? 'inline' : 'attachment'}; filename="${downloadName}"`, 'Content-Length': fileBytes.length, 'Access-Control-Allow-Origin': '*' })
       return response.end(fileBytes)
+    }
+
+    const clientDocumentRoute = apiPath.match(/^\/api\/v1\/client\/documents\/([^/]+)$/)
+    if (request.method === 'GET' && clientDocumentRoute) {
+      const session = await getSessionUser(request)
+      if (!session || session.role !== 'CLIENT') return json(response, 403, { message: 'Client access required.' })
+      const client = (await readUsers()).find((user) => user.id === session.id && user.role === 'CLIENT')
+      if (!client) return json(response, 403, { message: 'Client access required.' })
+      const documentId = decodeURIComponent(clientDocumentRoute[1])
+      const assignedCase = (await readCases()).find((item) => item.clientEmail?.toLowerCase() === client.email.toLowerCase() && (item.documents || []).some((file) => file.id === documentId))
+      const document = assignedCase?.documents.find((file) => file.id === documentId)
+      if (!document) return json(response, 404, { message: 'Case file not found.' })
+      const viewInline = requestUrl.searchParams.get('view') === '1'
+      if (useSupabase) {
+        const result = await supabaseRequest(`/storage/v1/object/sign/law-documents/${document.storageName}`, { method: 'POST', body: JSON.stringify({ expiresIn: 60, download: viewInline ? false : document.fileName }) })
+        const signedURL = String(result.signedURL || '')
+        const url = signedURL.startsWith('http') ? signedURL : `${supabaseUrl}/storage/v1${signedURL.startsWith('/') ? signedURL : `/${signedURL}`}`
+        return json(response, 200, { url })
+      }
+      const fileBytes = readFileSync(join(documentsDir, document.storageName))
+      const downloadName = document.fileName.replace(/[\r\n"]+/g, '_')
+      response.writeHead(200, { 'Content-Type': document.mimeType, 'Content-Disposition': `${viewInline ? 'inline' : 'attachment'}; filename="${downloadName}"`, 'Content-Length': fileBytes.length, 'Access-Control-Allow-Origin': '*' })
+      return response.end(fileBytes)
+    }
+
+    const caseChatRoute = apiPath.match(/^\/api\/v1\/cases\/([^/]+)\/chat$/)
+    if (request.method === 'POST' && caseChatRoute) {
+      const session = await getSessionUser(request)
+      if (!session || !['ADMIN', 'CLIENT'].includes(session.role)) return json(response, 401, { message: 'Sign in to use matter chat.' })
+      const caseId = decodeURIComponent(caseChatRoute[1])
+      const body = String((await readBody(request)).body || '').trim()
+      if (!body || body.length > 3000) return json(response, 400, { message: 'Enter a message up to 3,000 characters.' })
+      const [cases, users] = await Promise.all([readCases(), readUsers()])
+      const caseRecord = cases.find((item) => item.id === caseId)
+      if (!caseRecord) return json(response, 404, { message: 'Matter not found.' })
+      const sender = users.find((user) => user.id === session.id)
+      if (!sender || (session.role === 'CLIENT' && caseRecord.clientEmail?.toLowerCase() !== sender.email.toLowerCase())) {
+        return json(response, 403, { message: 'You do not have access to this matter chat.' })
+      }
+      caseRecord.messages = Array.isArray(caseRecord.messages) ? caseRecord.messages : []
+      const message = {
+        id: randomBytes(10).toString('hex'),
+        senderRole: session.role,
+        senderName: `${sender.firstName} ${sender.lastName}`.trim(),
+        body,
+        createdAt: new Date().toISOString()
+      }
+      caseRecord.messages.push(message)
+      await writeCases(cases)
+      return json(response, 201, { message })
     }
 
     const caseNotesRoute = apiPath.match(/^\/api\/v1\/admin\/cases\/([^/]+)\/notes$/)
@@ -708,11 +814,14 @@ export const handler = async (request, response) => {
       const lastName = String(body.lastName || fullName.split(/\s+/).slice(1).join(' ') || 'Client').trim()
       const email = String(body.email || '').trim().toLowerCase()
       const phone = String(body.phone || '').trim()
+      const legalActivity = String(body.legalActivity || '').trim()
       const password = String(body.password || '')
 
-      if (!firstName || !lastName || !email || !phone || !password) {
+      if (!firstName || !lastName || !email || !legalActivity || !password) {
         return json(response, 400, { message: 'Please complete every required field.' })
       }
+
+      if (legalActivity.length > 120) return json(response, 400, { message: 'Choose a valid legal activity.' })
 
       if (password.length < 8) {
         return json(response, 400, { message: 'Use at least 8 characters for your password.' })
@@ -727,7 +836,7 @@ export const handler = async (request, response) => {
         return json(response, 409, { message: 'An account already exists for this email address.' })
       }
 
-      const newClient = createClientRecord({ firstName, lastName, email, phone, password })
+      const newClient = createClientRecord({ firstName, lastName, email, phone, legalActivity, password })
       users.push(newClient)
       await writeUsers(users)
 
@@ -814,13 +923,17 @@ export const handler = async (request, response) => {
       }
 
       const users = await readUsers()
-      const clients = users.filter((user) => user.role === 'CLIENT').map((user) => ({
-        id: user.id,
-        name: `${user.firstName} ${user.lastName}`,
-        email: user.email,
-        status: 'ACTIVE'
-      }))
       const cases = await readCases()
+      const clients = users.filter((user) => user.role === 'CLIENT').map((user) => {
+        const hasMatter = cases.some((item) => item.clientEmail?.toLowerCase() === user.email.toLowerCase())
+        return {
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          legalActivity: user.legalActivity || '',
+          status: user.approvalStatus || (hasMatter ? 'APPROVED' : 'PENDING')
+        }
+      })
       const consultations = await readConsultations()
       const totalDocuments = cases.reduce((total, item) => total + (item.documents || []).length, 0)
 

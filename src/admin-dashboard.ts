@@ -10,6 +10,7 @@ export type AdminCase = {
   hearings: Array<{ hearingDate: string; purpose?: string; status: string }>
   notes: Array<{ id: string; body: string; createdAt: string }>
   documents: Array<{ id: string; title: string; fileName: string; mimeType?: string; createdAt: string }>
+  messages?: Array<{ id: string; senderRole: string; senderName: string; body: string; createdAt: string }>
 }
 
 export type AdminSettings = {
@@ -25,7 +26,7 @@ export type AdminDashboardData = {
   integrations: { emailConfigured: boolean; cronConfigured: boolean }
   stats: { activeCases: number; upcomingHearings: number; totalClients: number; totalDocuments: number }
   cases: AdminCase[]
-  clients: Array<{ name: string; email: string; status: string }>
+  clients: Array<{ id: string; name: string; email: string; legalActivity: string; status: string }>
   consultations: Array<{ reference: string; name: string; email: string; phone: string; practiceArea: string; preferredDate: string; preferredTime: string; message: string; status: string; createdAt: string }>
 }
 
@@ -68,18 +69,21 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     return result
   }
 
-  const downloadDocument = async (id: string, fileName: string) => {
+  const accessDocument = async (id: string, fileName: string, viewInline = false) => {
     const token = localStorage.getItem(options.tokenKey)
-    const response = await fetch(`${options.apiBase}/admin/documents/${encodeURIComponent(id)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-    if (!response.ok) throw new Error('Unable to download this document.')
+    const preview = viewInline ? window.open('about:blank', '_blank') : null
+    if (viewInline && !preview) throw new Error('Allow pop-ups to preview this document.')
+    const response = await fetch(`${options.apiBase}/admin/documents/${encodeURIComponent(id)}${viewInline ? '?view=1' : ''}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    if (!response.ok) { preview?.close(); throw new Error('Unable to access this document.') }
     const contentType = response.headers.get('content-type') || ''
     const target = contentType.includes('application/json') ? (await response.json() as { url: string }).url : URL.createObjectURL(await response.blob())
+    if (viewInline && preview) { preview.location.href = target; if (target.startsWith('blob:')) window.setTimeout(() => URL.revokeObjectURL(target), 60000); return }
     const link = document.createElement('a')
     link.href = target
     link.download = fileName
     if (contentType.includes('application/json')) link.target = '_blank'
     link.click()
-    if (target.startsWith('blob:')) URL.revokeObjectURL(target)
+    if (target.startsWith('blob:')) window.setTimeout(() => URL.revokeObjectURL(target), 60000)
   }
 
   const fileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
@@ -166,6 +170,12 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     </button>
   `
 
+  const clientRow = (client: AdminDashboardData['clients'][number]) => `
+    <article class="admin-directory-row admin-client-record"><span class="admin-avatar">${escapeHTML(initials(client.name))}</span><div><strong>${escapeHTML(client.name)}</strong><small>${escapeHTML(client.email)} · ${escapeHTML(client.legalActivity || 'Legal assistance requested')}</small></div><span class="admin-status-pill ${client.status === 'PENDING' ? 'admin-status-pending' : ''}">${escapeHTML(client.status)}</span>
+      ${client.status === 'PENDING' ? `<form class="admin-approve-client" data-approve-client="${escapeHTML(client.id)}"><label>Matter title<input name="title" required maxlength="160" value="${escapeHTML(client.legalActivity || 'Client matter')}"></label><label>Court or venue<input name="court" required maxlength="160" placeholder="Enter court or venue"></label><button class="admin-primary-action" type="submit">Approve &amp; create case</button><p class="admin-inline-note" role="status"></p></form>` : ''}
+    </article>
+  `
+
   const consultationRow = (item: AdminDashboardData['consultations'][number], compact = false) => `
     <article class="admin-consultation-row">
       <div class="admin-consultation-head"><span>${escapeHTML(item.reference)}</span><select aria-label="Update consultation status" data-consultation-status="${escapeHTML(item.reference)}">${['PENDING', 'CONTACTED', 'CONFIRMED', 'DECLINED'].map((status) => `<option ${item.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div>
@@ -226,6 +236,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     const client = data.clients.find((record) => record.email.toLowerCase() === (item.clientEmail || '').toLowerCase())
     return `
       <div class="admin-view-heading"><div><button class="admin-back-button" type="button" data-admin-view="cases">← Cases</button><span class="eyebrow">${escapeHTML(item.caseNumber)}</span><h1>${escapeHTML(item.title)}</h1><p>${escapeHTML(item.caseType)} · ${escapeHTML(item.status)}</p></div><span class="admin-status-pill">${escapeHTML(item.status)}</span></div>
+      ${item.clientEmail ? `<section class="admin-panel admin-case-chat"><div class="admin-panel-heading"><div><span class="eyebrow">Client connection</span><h2>Private matter chat</h2></div><span class="admin-chat-client">${escapeHTML(client?.name || item.clientEmail)}</span></div><div class="admin-chat-thread">${(item.messages || []).length ? (item.messages || []).map((message) => `<article class="chat-message ${message.senderRole === 'ADMIN' ? 'chat-message-mine' : ''}"><strong>${escapeHTML(message.senderRole === 'ADMIN' ? 'You' : message.senderName)}</strong><p>${escapeHTML(message.body)}</p><time>${escapeHTML(dateLabel(message.createdAt, true))}</time></article>`).join('') : '<p class="client-chat-empty">No messages yet. Start a private conversation with the client.</p>'}</div><form class="admin-case-chat-form" data-admin-chat="${escapeHTML(item.id)}"><label>Message the client<textarea name="body" rows="2" maxlength="3000" required placeholder="Write a message…"></textarea></label><button class="admin-primary-action" type="submit">Send message</button><p class="admin-inline-note" role="status"></p></form></section>` : ''}
       <div class="admin-case-detail-grid">
         <section class="admin-panel">
           <span class="eyebrow">Matter summary</span><h2>Case details</h2>
@@ -233,7 +244,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
           <div class="admin-timeline"><h3>Case timeline</h3>${item.hearings.length ? item.hearings.map((hearing) => `<div class="admin-timeline-item"><time>${escapeHTML(dateLabel(hearing.hearingDate))}</time><span>${escapeHTML(hearing.purpose || 'Hearing')} · ${escapeHTML(hearing.status)}</span></div>`).join('') : '<p class="admin-empty">No timeline events have been recorded.</p>'}</div>
           <form class="admin-note-form" id="admin-case-hearing-form"><label>Add hearing date and time<input name="hearingDate" type="datetime-local" required></label><label>Purpose<input name="purpose" required maxlength="120" placeholder="Mention, hearing, ruling"></label><button class="admin-primary-action" type="submit">Schedule hearing</button><p class="admin-inline-note" role="status"></p></form>
         </section>
-        <section class="admin-panel"><span class="eyebrow">Matter activity</span><h2>Recent documents</h2>${item.documents.length ? item.documents.map((document) => `<div class="admin-document-row"><div><strong>${escapeHTML(document.title)}</strong><small>${escapeHTML(document.fileName)}</small></div><button class="admin-link-button" type="button" data-download-document="${escapeHTML(document.id)}" data-file-name="${escapeHTML(document.fileName)}">Download</button></div>`).join('') : '<p class="admin-empty">No documents attached to this case.</p>'}<form class="admin-note-form" id="admin-case-document-form"><label>Upload a case document<input name="documentFile" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png" required></label><label>Document title<input name="title" required maxlength="160" placeholder="Document title"></label><button class="admin-primary-action" type="submit">Upload document</button><p class="admin-inline-note" role="status"></p></form><h2 class="admin-subheading">Case notes</h2>${item.notes.length ? item.notes.map((note) => `<article class="admin-note"><p>${escapeHTML(note.body)}</p><small>${escapeHTML(dateLabel(note.createdAt, true))}</small></article>`).join('') : '<p class="admin-empty">No notes recorded.</p>'}<form class="admin-note-form" id="admin-case-note-form"><label>Add case note<textarea name="body" required rows="3" maxlength="2000" placeholder="Record an internal case update"></textarea></label><button class="admin-primary-action" type="submit">Add note</button><p class="admin-inline-note" role="status"></p></form></section>
+        <section class="admin-panel"><span class="eyebrow">Matter activity</span><h2>Recent documents</h2>${item.documents.length ? item.documents.map((document) => `<div class="admin-document-row"><div><strong>${escapeHTML(document.title)}</strong><small>${escapeHTML(document.fileName)}</small></div><button class="admin-link-button" type="button" data-view-document="${escapeHTML(document.id)}" data-file-name="${escapeHTML(document.fileName)}">View</button><button class="admin-link-button" type="button" data-download-document="${escapeHTML(document.id)}" data-file-name="${escapeHTML(document.fileName)}">Download</button></div>`).join('') : '<p class="admin-empty">No documents attached to this case.</p>'}<form class="admin-note-form" id="admin-case-document-form"><label>Upload a case document<input name="documentFile" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png" required></label><label>Document title<input name="title" required maxlength="160" placeholder="Document title"></label><button class="admin-primary-action" type="submit">Upload document</button><p class="admin-inline-note" role="status"></p></form><h2 class="admin-subheading">Case notes</h2>${item.notes.length ? item.notes.map((note) => `<article class="admin-note"><p>${escapeHTML(note.body)}</p><small>${escapeHTML(dateLabel(note.createdAt, true))}</small></article>`).join('') : '<p class="admin-empty">No notes recorded.</p>'}<form class="admin-note-form" id="admin-case-note-form"><label>Add case note<textarea name="body" required rows="3" maxlength="2000" placeholder="Record an internal case update"></textarea></label><button class="admin-primary-action" type="submit">Add note</button><p class="admin-inline-note" role="status"></p></form></section>
       </div>
     `
   }
@@ -312,9 +323,9 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     if (view === 'overview') content.innerHTML = renderOverview()
     else if (view === 'cases') content.innerHTML = renderCases()
     else if (view === 'case-detail') content.innerHTML = renderCaseDetail()
-    else if (view === 'clients') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Client directory</span><h1>Clients</h1><p>Registered client accounts and their contact details.</p></div></div><section class="admin-panel"><div class="admin-toolbar"><input id="admin-client-search" type="search" placeholder="Search clients or email"><span>${data.clients.length} clients</span></div><div id="admin-clients-list">${data.clients.length ? data.clients.map((client) => `<article class="admin-directory-row"><span class="admin-avatar">${escapeHTML(initials(client.name))}</span><div><strong>${escapeHTML(client.name)}</strong><small>${escapeHTML(client.email)}</small></div><span class="admin-status-pill">${escapeHTML(client.status)}</span></article>`).join('') : '<p class="admin-empty">No registered clients yet.</p>'}</div></section>`
+    else if (view === 'clients') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Client directory</span><h1>Clients</h1><p>Review new client requests and approve a matter to issue its case number and open private chat.</p></div></div><section class="admin-panel"><div class="admin-toolbar"><input id="admin-client-search" type="search" placeholder="Search clients, activity, or email"><span>${data.clients.length} clients</span></div><div id="admin-clients-list">${data.clients.length ? data.clients.map(clientRow).join('') : '<p class="admin-empty">No registered clients yet.</p>'}</div></section>`
     else if (view === 'hearings') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Court calendar</span><h1>Hearings</h1><p>Scheduled hearings linked to active matters.</p></div></div><section class="admin-panel">${hearings.length ? hearings.map((hearing) => `<div class="admin-hearing-row"><time>${escapeHTML(dateLabel(hearing.hearingDate, true))}</time><div><strong>${escapeHTML(hearing.caseTitle)}</strong><small>${escapeHTML(hearing.caseNumber)} · ${escapeHTML(hearing.purpose || 'Hearing')} · ${escapeHTML(hearing.status)}</small></div><button class="admin-link-button" type="button" data-open-case="${escapeHTML(hearing.caseId)}">Open case →</button></div>`).join('') : '<p class="admin-empty">No hearings are scheduled.</p>'}</section>`
-    else if (view === 'documents') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Matter records</span><h1>Documents</h1><p>Download files attached to council cases.</p></div></div><section class="admin-panel">${documents.length ? documents.map((document) => `<div class="admin-document-row"><div><strong>${escapeHTML(document.title)}</strong><small>${escapeHTML(document.caseNumber)} · ${escapeHTML(document.caseTitle)} · ${escapeHTML(document.fileName)}</small></div><button class="admin-link-button" type="button" data-download-document="${escapeHTML(document.id)}" data-file-name="${escapeHTML(document.fileName)}">Download</button></div>`).join('') : '<p class="admin-empty">No documents are attached to cases yet. Upload a file from a case detail view.</p>'}</section>`
+    else if (view === 'documents') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Matter records</span><h1>Documents</h1><p>Download files attached to council cases.</p></div></div><section class="admin-panel">${documents.length ? documents.map((document) => `<div class="admin-document-row"><div><strong>${escapeHTML(document.title)}</strong><small>${escapeHTML(document.caseNumber)} · ${escapeHTML(document.caseTitle)} · ${escapeHTML(document.fileName)}</small></div><button class="admin-link-button" type="button" data-view-document="${escapeHTML(document.id)}" data-file-name="${escapeHTML(document.fileName)}">View</button><button class="admin-link-button" type="button" data-download-document="${escapeHTML(document.id)}" data-file-name="${escapeHTML(document.fileName)}">Download</button></div>`).join('') : '<p class="admin-empty">No documents are attached to cases yet. Upload a file from a case detail view.</p>'}</section>`
     else if (view === 'messages') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Client correspondence</span><h1>Messages</h1><p>Messages included with consultation requests.</p></div></div><section class="admin-panel">${messages.length ? messages.map((item) => `<article class="admin-message-row"><div><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.email)} · ${escapeHTML(item.reference)} · ${escapeHTML(item.status)}</small></div><p>${escapeHTML(item.message)}</p></article>`).join('') : '<p class="admin-empty">No client messages have been received.</p>'}</section>`
     else if (view === 'consultations') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Appointment requests</span><h1>Consultations</h1><p>Review preferred slots and update each request. Appointments remain unconfirmed until the council contacts the client.</p></div></div><section class="admin-panel">${data.consultations.length ? data.consultations.map((item) => consultationRow(item)).join('') : '<p class="admin-empty">No consultation requests yet.</p>'}</section>`
     else if (view === 'analytics') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Workspace performance</span><h1>Analytics</h1><p>Live breakdowns calculated from cases, hearings, clients, documents, and consultation requests.</p></div></div><div class="admin-stats"><article class="admin-stat"><span>Total cases</span><b>${data.cases.length}</b><small>All recorded matters</small></article><article class="admin-stat"><span>Active cases</span><b>${data.stats.activeCases}</b><small>Currently in progress</small></article><article class="admin-stat"><span>Registered clients</span><b>${data.clients.length}</b><small>Client accounts</small></article><article class="admin-stat"><span>Pending consultations</span><b>${data.consultations.filter((item) => item.status === 'PENDING').length}</b><small>Awaiting review</small></article><article class="admin-stat"><span>Upcoming hearings</span><b>${data.stats.upcomingHearings}</b><small>Scheduled events</small></article><article class="admin-stat"><span>Case documents</span><b>${data.stats.totalDocuments}</b><small>Uploaded files</small></article></div><div class="admin-dashboard-grid admin-analytics-grid">${barChart('Cases by status', 'MATTER DISTRIBUTION', countBy(data.cases, (item) => item.status))}${barChart('Cases by practice area', 'PRACTICE MIX', countBy(data.cases, (item) => item.caseType))}${barChart('Consultations by status', 'REQUEST PIPELINE', countBy(data.consultations, (item) => item.status))}${barChart('Hearings by purpose', 'COURT CALENDAR', countBy(data.cases.flatMap((item) => item.hearings), (item) => item.purpose || 'Hearing'))}</div>`
@@ -350,8 +361,14 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     }
     const documentButton = target.closest<HTMLButtonElement>('[data-download-document]')
     if (documentButton) {
-      try { await downloadDocument(documentButton.dataset.downloadDocument || '', documentButton.dataset.fileName || 'case-document') }
+      try { await accessDocument(documentButton.dataset.downloadDocument || '', documentButton.dataset.fileName || 'case-document') }
       catch (error) { window.alert(error instanceof Error ? error.message : 'Unable to download this document.') }
+      return
+    }
+    const viewDocumentButton = target.closest<HTMLButtonElement>('[data-view-document]')
+    if (viewDocumentButton) {
+      try { await accessDocument(viewDocumentButton.dataset.viewDocument || '', viewDocumentButton.dataset.fileName || 'case-document', true) }
+      catch (error) { window.alert(error instanceof Error ? error.message : 'Unable to preview this document.') }
       return
     }
     if (target.closest('#site-editor-reset')) {
@@ -396,7 +413,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     if (input.id === 'admin-client-search' && data) {
       const query = input.value.trim().toLowerCase()
       const list = root.querySelector<HTMLDivElement>('#admin-clients-list')
-      if (list) list.innerHTML = data.clients.filter((item) => `${item.name} ${item.email}`.toLowerCase().includes(query)).map((client) => `<article class="admin-directory-row"><span class="admin-avatar">${escapeHTML(initials(client.name))}</span><div><strong>${escapeHTML(client.name)}</strong><small>${escapeHTML(client.email)}</small></div><span class="admin-status-pill">${escapeHTML(client.status)}</span></article>`).join('') || '<p class="admin-empty">No matching clients.</p>'
+      if (list) list.innerHTML = data.clients.filter((item) => `${item.name} ${item.email} ${item.legalActivity}`.toLowerCase().includes(query)).map(clientRow).join('') || '<p class="admin-empty">No matching clients.</p>'
     }
   })
 
@@ -434,7 +451,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
 
   root.addEventListener('submit', async (event) => {
     const form = event.target
-    if (!(form instanceof HTMLFormElement) || !['admin-create-case-form', 'admin-case-note-form', 'admin-case-hearing-form', 'admin-case-document-form', 'admin-settings-form'].includes(form.id)) return
+    if (!(form instanceof HTMLFormElement) || (!['admin-create-case-form', 'admin-case-note-form', 'admin-case-hearing-form', 'admin-case-document-form', 'admin-settings-form'].includes(form.id) && !form.dataset.approveClient && !form.dataset.adminChat)) return
     event.preventDefault()
     const note = form.querySelector<HTMLParagraphElement>('.admin-inline-note')
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')
@@ -443,6 +460,8 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     try {
       let path = '/admin/cases'
       let body: unknown = Object.fromEntries(new FormData(form).entries())
+      if (form.dataset.approveClient) path = `/admin/clients/${encodeURIComponent(form.dataset.approveClient)}/approve`
+      if (form.dataset.adminChat) path = `/cases/${encodeURIComponent(form.dataset.adminChat)}/chat`
       if (form.id === 'admin-case-note-form') path = `/admin/cases/${encodeURIComponent(selectedCaseId)}/notes`
       if (form.id === 'admin-case-hearing-form') {
         path = `/admin/cases/${encodeURIComponent(selectedCaseId)}/hearings`
@@ -484,6 +503,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
       data = nextData
       render()
     },
+    refresh,
     reset() {
       view = 'overview'
       selectedCaseId = ''
