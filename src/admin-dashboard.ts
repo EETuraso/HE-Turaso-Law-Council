@@ -192,7 +192,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
   const renderOverview = () => {
     if (!data) return ''
     const hearings = data.cases.flatMap((item) => item.hearings.map((hearing) => ({ ...hearing, caseTitle: item.title }))).sort((left, right) => left.hearingDate.localeCompare(right.hearingDate))
-    const greeting = data.admin?.firstName ? `Good morning,<br><em>${escapeHTML(data.admin.firstName)}.</em>` : 'Council<br><em>overview.</em>'
+    const greeting = data.admin?.firstName ? `Welcome,<br><em>${escapeHTML(data.admin.firstName)}.</em>` : 'Welcome<br><em>to your council.</em>'
     const caseStatuses = countBy(data.cases, (item) => item.status)
     const consultationStatuses = countBy(data.consultations, (item) => item.status)
     return `
