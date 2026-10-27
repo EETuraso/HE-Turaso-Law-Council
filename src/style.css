@@ -236,3 +236,4 @@
 .admin-site-theme input[type=color]{width:100%;height:38px;padding:3px;border:1px solid #d9ded8;background:#fff}
 .admin-site-theme select{min-height:38px;padding:8px;border:1px solid #d9ded8;background:#fff;color:var(--ink);font:12px Manrope,sans-serif}
 @media(max-width:700px){.admin-site-theme-colors{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){.hero:after{background:linear-gradient(180deg,var(--deep) 0%,rgba(11,34,39,.88) 35%,rgba(11,34,39,.68) 100%),var(--site-editor-background-image,url('https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=1200&q=85')) center/cover;mix-blend-mode:normal;opacity:1}}

@@ -210,6 +210,32 @@ const json = (response, status, body) => {
   response.end(JSON.stringify(body))
 }
 
+const decodeXml = (value) => value
+  .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+  .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+  .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+  .replace(/&lt;/g, '<')
+  .replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"')
+  .replace(/&apos;/g, "'")
+  .replace(/&amp;/g, '&')
+
+const parseNewsFeed = (xml) => [...xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)]
+  .map(([, item]) => {
+    const value = (tag) => {
+      const match = item.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, 'i'))
+      return match ? decodeXml(match[1].trim()) : ''
+    }
+    const title = value('title')
+    const link = value('link')
+    const pubDate = value('pubDate')
+    try {
+      if (!title || new URL(link).protocol !== 'https:' || !pubDate || Number.isNaN(Date.parse(pubDate))) return null
+    } catch { return null }
+    return { title, link, pubDate }
+  })
+  .filter(Boolean)
+
 const readBody = async (request, maxBytes = 1024 * 1024) => {
   const chunks = []
   let byteLength = 0
@@ -408,6 +434,21 @@ export const handler = async (request, response) => {
   try {
     if (request.method === 'GET' && apiPath === '/api/v1/health') {
       return json(response, 200, { status: 'ok', service: 'henry-turaso-law-council-api' })
+    }
+
+    if (request.method === 'GET' && apiPath === '/api/v1/news/nigeria') {
+      try {
+        const feedResponse = await fetch('https://news.google.com/rss/search?q=Nigeria&hl=en-NG&gl=NG&ceid=NG:en', {
+          signal: AbortSignal.timeout(8000)
+        })
+        if (!feedResponse.ok) throw new Error(`Google News returned ${feedResponse.status}.`)
+        const items = parseNewsFeed(await feedResponse.text()).slice(0, 6)
+        if (!items.length) throw new Error('Google News returned no usable stories.')
+        return json(response, 200, { items })
+      } catch (error) {
+        console.error('Unable to load the Nigeria news feed:', error)
+        return json(response, 502, { message: 'Latest news is temporarily unavailable.' })
+      }
     }
 
     if (request.method === 'GET' && apiPath === '/api/v1/cron/hearing-reminders') {
@@ -822,6 +863,7 @@ export const handler = async (request, response) => {
       }
 
       if (legalActivity.length > 120) return json(response, 400, { message: 'Choose a valid legal activity.' })
+      if (phone.length > 40) return json(response, 400, { message: 'Phone number must be 40 characters or fewer.' })
 
       if (password.length < 8) {
         return json(response, 400, { message: 'Use at least 8 characters for your password.' })
