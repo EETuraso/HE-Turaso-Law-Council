@@ -55,6 +55,38 @@ const pages: Record<PublicPage | 'admin', string> = {
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = page === 'admin'
   ? `<main id="top">${pages.admin}</main>`
   : `${header}<main id="top">${page === 'portal' ? clientPortalPage : pages[page] || pages.home}</main>${footer}`
+
+const passwordControls = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]')).map((input) => {
+  const label = input.closest('label')!
+  const fieldName = label.firstChild?.textContent?.trim().toLowerCase() || 'password'
+  input.id ||= input.name
+  label.htmlFor = input.id
+
+  const field = document.createElement('div')
+  field.className = 'password-field'
+  label.before(field)
+  const control = document.createElement('div')
+  control.className = 'password-control'
+  const toggle = document.createElement('button')
+  toggle.type = 'button'
+  toggle.className = 'password-toggle'
+  toggle.setAttribute('aria-controls', input.id)
+  field.append(label, control)
+  control.append(input, toggle)
+
+  const setVisible = (visible: boolean) => {
+    input.type = visible ? 'text' : 'password'
+    toggle.textContent = visible ? 'Hide' : 'Show'
+    toggle.setAttribute('aria-label', `${visible ? 'Hide' : 'Show'} ${fieldName}`)
+  }
+  const hide = () => setVisible(false)
+  toggle.addEventListener('click', () => setVisible(input.type === 'password'))
+  input.form?.addEventListener('reset', hide)
+  hide()
+  return hide
+})
+const hidePasswords = () => passwordControls.forEach((hide) => hide())
+
 const applySiteContent = (siteContent: { overrides?: Array<Record<string, unknown>>; theme?: Record<string, string> }) => {
   const theme = siteContent.theme || {}
   const cssColors: Record<string, string> = { gold: '--gold', deep: '--deep', ink: '--ink', muted: '--muted', paper: '--paper', sand: '--sand', line: '--line' }
@@ -232,12 +264,14 @@ type ClientDashboardData = {
 
 const showClientAuth = (mode: 'login' | 'signup') => {
   if (!clientLoginForm || !clientSignupForm) return
+  hidePasswords()
   clientLoginForm.hidden = mode !== 'login'
   clientSignupForm.hidden = mode !== 'signup'
 }
 
 const renderClientDashboard = (data: ClientDashboardData) => {
   if (!clientDashboard || !clientLoginForm || !clientSignupForm) return
+  hidePasswords()
   const accountDetails = document.querySelector<HTMLDivElement>('#client-account-details')!
   const approval = document.querySelector<HTMLDivElement>('#client-approval-status')!
   const caseDetails = document.querySelector<HTMLDivElement>('#case-details')!
@@ -389,6 +423,7 @@ const adminTokenKey = 'henry-turaso-admin-token'
 const adminWorkspace = adminDashboard ? createAdminWorkspace(adminDashboard, { apiBase, tokenKey: adminTokenKey }) : null
 const renderAdminDashboard = (data: AdminDashboardData) => {
   if (!adminDashboard || !adminLoginForm) return
+  hidePasswords()
   adminLoginForm.hidden = true; adminDashboard.hidden = false; adminWorkspace?.render(data)
 }
 const readApiResult = async <T,>(response: Response): Promise<T> => {

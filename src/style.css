@@ -171,6 +171,16 @@
 .text-button{border:0;background:transparent;color:var(--ink);font-size:12px;font-weight:700;text-align:left;padding:0;cursor:pointer}
 .text-button:hover{color:var(--gold)}
 .login-form[hidden],.case-dashboard[hidden]{display:none!important}
+.password-field{display:grid;gap:8px;min-width:0}
+.login-form .password-field{margin-bottom:22px}
+.login-form .password-field>label,.admin-login .password-field>label{margin:0}
+.password-control{position:relative;min-width:0}
+.login-form .password-control input,.admin-login .password-control input{margin:0;padding-right:78px}
+.password-control input::-ms-reveal{display:none}
+.password-toggle{position:absolute;top:50%;right:4px;transform:translateY(-50%);min-width:64px;min-height:44px;padding:8px;border:0;border-radius:4px;background:transparent;color:var(--ink);font:700 13px Manrope,sans-serif}
+.password-toggle:hover{background:var(--sand)}
+.password-toggle:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+@media(max-width:700px){.login-form .password-field{gap:6px;margin-bottom:0}}
 .case-dashboard{padding:25px;background:#fff;border:1px solid var(--line);border-top:2px solid var(--gold)}
 .dashboard-top{display:flex;justify-content:space-between;gap:15px;padding-bottom:15px;border-bottom:1px solid var(--line);font:10px 'DM Mono';letter-spacing:.08em}
 .status-dot{color:#4d8a61}
