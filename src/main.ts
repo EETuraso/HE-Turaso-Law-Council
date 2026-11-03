@@ -1,4 +1,5 @@
 import './style.css'
+import './typography.css'
 import { createAdminWorkspace, createStaffWorkspace, type AdminDashboardData } from './admin-dashboard'
 
 type PublicPage = 'home' | 'about' | 'chamber' | 'services' | 'insights' | 'contact'
@@ -139,7 +140,8 @@ const applySiteContent = (siteContent: { overrides?: Array<Record<string, unknow
   const theme = siteContent.theme || {}
   const cssColors: Record<string, string> = { gold: '--gold', deep: '--deep', ink: '--ink', muted: '--muted', paper: '--paper', sand: '--sand', line: '--line' }
   for (const [key, variable] of Object.entries(cssColors)) if (/^#[0-9a-fA-F]{6}$/.test(theme[key] || '')) document.documentElement.style.setProperty(variable, theme[key])
-  if (['Manrope', 'Arial', 'Georgia', 'system-ui'].includes(theme.font)) document.body.style.fontFamily = theme.font
+  const fontStacks: Record<string, string> = { Manrope: 'Manrope, Arial, sans-serif', Arial: 'Arial, sans-serif', Georgia: 'Georgia, "Times New Roman", serif', 'system-ui': 'system-ui, Arial, sans-serif' }
+  if (['Manrope', 'Arial', 'Georgia', 'system-ui'].includes(theme.font)) document.body.style.fontFamily = fontStacks[theme.font]
   for (const rule of siteContent.overrides || []) {
     if (typeof rule.selector !== 'string' || (typeof rule.page === 'string' && rule.page !== page)) continue
     try {

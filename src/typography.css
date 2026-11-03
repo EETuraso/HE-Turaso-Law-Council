@@ -1,0 +1,167 @@
+/* Shared reading sizes. Decorative headings keep their existing display scale. */
+:root {
+  --type-body: clamp(1.0625rem, 1rem + .2vw, 1.125rem);
+  --type-small: .9375rem;
+  --type-caption: .8125rem;
+  --reading-muted: #4c6063;
+  --reading-accent: #805d24;
+}
+
+body { font-size: var(--type-body); line-height: 1.7; }
+.eyebrow, .section-label, .card-number, .hero-meta, .copyright, .barrister-title,
+.dashboard-top, .preview-top, .client-matter-heading, .admin-case-number,
+.admin-consultation-head, .admin-status-pill, .admin-hearing-row time,
+.admin-timeline-item time, .admin-clock-readout { font-family: 'DM Mono', Consolas, monospace; }
+button, input, select, textarea { font-family: inherit; }
+
+/* Navigation and the small text that guides readers around each page. */
+.site-header { height: 96px; }
+.brand strong { font-size: 16px; line-height: 1.4; }
+.brand small { font-size: 13px; line-height: 1.5; }
+.site-nav { gap: clamp(12px, 1.1vw, 18px); font-size: 14px; line-height: 1.4; }
+.site-nav a { display: inline-flex; align-items: center; min-height: 44px; }
+.menu-toggle { width: 44px; height: 44px; padding: 0; font-size: 28px; }
+.eyebrow, .section-label, .card-number, .trust-point strong {
+  font-size: var(--type-caption);
+  line-height: 1.6;
+  letter-spacing: .08em;
+  color: var(--reading-accent);
+}
+.section-label span { color: var(--reading-muted); }
+.hero .eyebrow, .trust-band .eyebrow, .trust-point strong { color: var(--gold); }
+.hero-intro { max-width: 35rem; font-size: clamp(18px, 1rem + .3vw, 20px); line-height: 1.75; color: #d7e1df; }
+.hero-meta { font-size: 13px; line-height: 1.5; color: #b7c9c6; }
+
+/* Public page descriptions, service cards, article summaries and contact copy. */
+.page-hero p, .intro-grid p:not(.lead), .service-strip-text p, .about-copy > p,
+.text-card p, .barrister-copy > p:not(.barrister-title), .contact-info p,
+.consultation-heading > p, .portal p, .login-copy p, .client-login .login-copy p {
+  font-size: var(--type-body);
+  line-height: 1.75;
+}
+.page-hero p, .intro-grid p:not(.lead), .service-strip-text p, .about-copy > p,
+.text-card p, .barrister-copy > p:not(.barrister-title), .contact-info p,
+.consultation-heading > p { color: var(--reading-muted); }
+.page-hero p { max-width: 40rem; }
+.barrister-title { font-size: 14px; line-height: 1.65; }
+.service-strip-text p, .about-copy > p, .text-card p { max-width: 65ch; }
+.service-card { display: flex; flex-direction: column; min-width: 0; min-height: 320px; padding: clamp(24px, 2.2vw, 32px); }
+.service-card h3 { font-size: clamp(26px, 2.2vw, 30px); line-height: 1.2; margin: 30px 0 14px; }
+.service-card p, .insight-card p { font-size: var(--type-body); line-height: 1.75; color: var(--reading-muted); margin-bottom: 24px; }
+.service-card > a { display: inline-flex; align-items: center; align-self: flex-start; min-height: 44px; margin-top: auto; }
+.service-card a, .insight-card a, .inline-link, .text-link, .text-button { font-size: 15px; line-height: 1.5; }
+.insight-card h3 { font-size: clamp(26px, 2.4vw, 30px); line-height: 1.25; }
+.insight-card h3 a { font: inherit; line-height: inherit; }
+.insight-card .eyebrow { font-size: var(--type-caption); }
+.news-card { min-height: 280px; }
+.news-card h3 { font-size: clamp(24px, 2.2vw, 28px); line-height: 1.3; }
+.news-card p { font-size: 15px; line-height: 1.7; color: var(--reading-muted); }
+.trust-point h3 { font-size: 24px; line-height: 1.3; }
+.trust-point p, .contact-copy > p { font-size: var(--type-body); line-height: 1.75; color: #c7d5d2; }
+.contact-details { font-size: 14px; line-height: 1.8; }
+.contact-info a { overflow-wrap: anywhere; }
+.site-footer { gap: 24px; align-items: center; flex-wrap: wrap; font-size: 15px; line-height: 1.7; color: var(--reading-muted); }
+.site-footer .brand small { color: var(--reading-accent); }
+.copyright { font-size: 13px; line-height: 1.7; }
+
+/* Forms and the client portal should be as readable as the public pages. */
+.button { min-height: 48px; font-size: 15px; line-height: 1.4; }
+.consultation-form label, .contact-form label, .login-form label, .admin-login label { font-size: 14px; line-height: 1.6; }
+.consultation-form input, .consultation-form select, .consultation-form textarea,
+.contact-form input, .contact-form textarea, .login-form input, .login-form select, .admin-login input {
+  min-height: 48px;
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.login-form .password-control input, .admin-login .password-control input { padding-right: 88px; }
+.password-toggle { min-width: 74px; font-size: 15px; }
+.form-note { font-size: 14px; line-height: 1.6; }
+.dashboard-top, .preview-top, .client-matter-heading { font-size: 13px; line-height: 1.6; }
+.client-account-email, .client-matter > p, .client-files > p { font-size: 15px; line-height: 1.7; }
+.client-matter h4, .client-files h4, .client-chat h4 { font-size: 21px; line-height: 1.35; }
+.client-hearing span, .client-file-row small, .client-chat-heading span { font-size: 13px; line-height: 1.6; }
+.client-hearing strong, .client-file-row strong { font-size: 15px; line-height: 1.6; }
+.client-pending-card p, .client-pending-card small, .client-empty-state, .client-chat-empty { font-size: 16px; line-height: 1.7; }
+.client-download, .client-view { font-size: 14px; min-height: 44px; }
+.chat-message strong, .client-chat-form label, .admin-case-chat-form label { font-size: 14px; line-height: 1.6; }
+.chat-message p, .client-chat-form textarea, .admin-case-chat-form textarea { font-size: 16px; line-height: 1.65; }
+.chat-message time { font-size: 12px; line-height: 1.6; }
+
+/* Keep dashboard controls and case records comfortably readable too. */
+.admin-brand { font-size: 15px; line-height: 1.5; }
+.admin-brand small, .admin-user small, .admin-secure, .admin-topbar .eyebrow { font-size: 12px; line-height: 1.5; }
+.admin-user, .admin-nav button, .admin-signout { font-size: 15px; line-height: 1.5; }
+.admin-nav button { min-height: 44px; }
+.admin-view-heading p, .admin-stat span, .admin-case-main strong,
+.admin-client-row strong, .admin-directory-row strong, .admin-hearing-row strong,
+.admin-document-row strong, .admin-consultation-row > strong, .admin-message-row strong,
+.admin-detail-list dd, .admin-note p, .admin-report-row { font-size: 15px; line-height: 1.65; }
+.admin-panel h2 { font-size: 25px; line-height: 1.25; }
+.admin-stat small, .admin-case-number, .admin-case-main small, .admin-client-row small,
+.admin-directory-row small, .admin-hearing-row small, .admin-document-row small,
+.admin-message-row small, .admin-note small, .admin-consultation-head,
+.admin-detail-list dt, .admin-timeline-item, .admin-timeline-item time,
+.admin-integration-status small, .admin-settings-grid small, .admin-task-history { font-size: 13px; line-height: 1.6; }
+.admin-consultation-row p, .admin-message-row p, .admin-empty, .admin-toolbar,
+.admin-settings-wide small, .admin-settings-description, .admin-setting-toggle { font-size: 15px; line-height: 1.7; }
+.admin-primary-action { min-height: 44px; font-size: 15px; line-height: 1.5; }
+.admin-link-button, .admin-back-button { min-height: 40px; font-size: 14px; line-height: 1.5; }
+.admin-status-pill, .admin-consultation-head select { font-size: 12px; line-height: 1.5; }
+.admin-inline-note { font-size: 14px; line-height: 1.6; }
+.admin-create-case label, .admin-note-form label, .admin-approve-client label,
+.admin-settings-form .admin-form-grid label, .admin-settings-wide,
+.admin-site-preview label, .admin-site-properties label, .admin-site-theme label { font-size: 14px; line-height: 1.5; }
+.admin-toolbar input, .admin-create-case input, .admin-create-case textarea,
+.admin-note-form input, .admin-note-form textarea, .admin-approve-client input,
+.admin-settings-form input:not([type=checkbox]), .admin-settings-form select,
+.admin-site-preview select, .admin-site-properties input:not([type=checkbox]), .admin-site-properties textarea,
+.admin-site-theme select { min-height: 44px; font-size: 16px; line-height: 1.5; }
+.admin-approve-client .admin-primary-action { min-height: 44px; font-size: 14px; }
+.admin-case-row { grid-template-columns: 142px minmax(0,1fr) auto; }
+.admin-clock-readout, .admin-clock-readout time:last-child { font-size: 12px; line-height: 1.4; }
+.admin-site-properties > p { font-size: 14px; line-height: 1.6; }
+.barrister-title, .admin-stat span, .admin-stat small, .admin-case-number,
+.admin-case-main small, .admin-client-row small, .admin-directory-row small,
+.admin-hearing-row small, .admin-document-row small, .admin-message-row small,
+.admin-note small, .admin-consultation-head, .admin-detail-list dt, .admin-empty,
+.admin-toolbar, .admin-settings-wide small, .admin-settings-description,
+.admin-integration-status small { color: var(--reading-muted); }
+
+/* The assistant shares these sizes when the AI Preview is enabled. */
+.public-ai-launch { font-size: 15px; line-height: 1.5; min-height: 48px; }
+.public-ai-panel > header strong { font-size: 24px; line-height: 1.3; }
+.public-ai-message { font-size: 16px; line-height: 1.65; }
+.public-ai-disclaimer, .public-ai-panel form label, .public-ai-note { font-size: 13px; line-height: 1.6; }
+.public-ai-panel textarea { font-size: 16px; line-height: 1.5; }
+
+@media (max-width: 1160px) {
+  .site-header { height: 88px; padding-inline: 24px; }
+  .menu-toggle { display: grid; place-items: center; }
+  .site-nav { display: none; position: absolute; top: 100%; left: 0; right: 0; padding: 20px 24px; flex-direction: column; align-items: stretch; gap: 6px; border-top: 1px solid #29454a; background: var(--deep); }
+  .site-nav.is-open { display: flex; }
+  .site-nav a { padding: 10px 12px; font-size: 16px; }
+}
+
+@media (min-width: 701px) and (max-width: 1100px) {
+  .service-grid, .insight-grid, .trust-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trust-grid { gap: 32px; }
+}
+
+@media (max-width: 700px) {
+  .site-header { height: 80px; padding-inline: 20px; }
+  .hero h1 { font-size: clamp(38px, 9.5vw, 55px); line-height: 1.08; }
+  .page-hero h1 { font-size: clamp(44px, 10vw, 68px); line-height: 1.08; }
+  .hero-meta { font-size: 12px; gap: 18px; }
+  .hero-meta span:last-child { max-width: 72%; text-align: right; }
+  .service-grid, .insight-grid, .trust-grid { grid-template-columns: minmax(0, 1fr); }
+  .service-card { min-height: 0; padding: 28px 24px; }
+  .service-card h3 { margin-top: 24px; font-size: 28px; }
+  .service-card > a { margin-top: 0; }
+  .service-card p { margin-bottom: 18px; }
+  .client-login .login-copy p { color: #d7e1df; }
+  .client-login .login-copy .section-label { color: #e3be75; }
+  .admin-case-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .admin-secure { display: none; }
+}
