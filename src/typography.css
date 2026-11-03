@@ -131,6 +131,8 @@ button, input, select, textarea { font-family: inherit; }
 
 /* The assistant shares these sizes when the AI Preview is enabled. */
 .public-ai-launch { font-size: 15px; line-height: 1.5; min-height: 48px; }
+.public-ai-panel { grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; }
+.public-ai-messages { min-height: 0; }
 .public-ai-panel > header strong { font-size: 24px; line-height: 1.3; }
 .public-ai-message { font-size: 16px; line-height: 1.65; }
 .public-ai-disclaimer, .public-ai-panel form label, .public-ai-note { font-size: 13px; line-height: 1.6; }
