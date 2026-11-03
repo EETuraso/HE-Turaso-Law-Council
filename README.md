@@ -7,7 +7,10 @@ Install dependencies with `npm install`, then run the Vite site with `npm run de
 To run the API as well, copy `.env.example` to `.env` and set unique values for
 `API_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. The administrator account is
 created from these values the first time the API initializes its user store.
-Start both the API and site with `npm run dev:full`.
+Start both the API and site with `npm run dev:full`. The API loads `.env` and
+then `.env.local`. Run `npm run check:env` to validate settings without printing
+secrets. Set `API_STORAGE=local` explicitly for local JSON storage; Vercel
+requires Supabase. Run `npm test` for configuration and login regressions.
 
 The API stores users, cases, consultations, and documents in `server/data/`.
 This runtime data is local and intentionally excluded from version control.

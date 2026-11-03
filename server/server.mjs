@@ -1,26 +1,26 @@
 import { createServer } from 'node:http'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes, createHmac, pbkdf2Sync, timingSafeEqual } from 'node:crypto'
+import { runtimeConfiguration } from './config.mjs'
 
 const port = Number(process.env.API_PORT || 4000)
-const secret = process.env.API_SECRET
-if (!secret) throw new Error('API_SECRET must be set in the environment before starting the API.')
+const runtime = runtimeConfiguration()
+const secret = runtime.secret
 const rootDir = join(fileURLToPath(new URL('.', import.meta.url)), '..')
-const dataDir = join(rootDir, 'server', 'data')
+const dataDir = process.env.API_DATA_DIR ? resolve(process.env.API_DATA_DIR) : join(rootDir, 'server', 'data')
 const storagePath = join(dataDir, 'users.json')
 const casesPath = join(dataDir, 'cases.json')
 const consultationsPath = join(dataDir, 'consultations.json')
 const documentsDir = join(dataDir, 'documents')
 const sessions = new Map()
-const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/$/, '')
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
-const useSupabase = Boolean(supabaseUrl && supabaseKey)
+const { supabaseUrl, supabaseKey, useSupabase } = runtime
 
 const supabaseRequest = async (path, options = {}) => {
   if (!useSupabase) throw new Error('Supabase is not configured.')
   const response = await fetch(`${supabaseUrl}${path}`, {
+    signal: AbortSignal.timeout(10000),
     ...options,
     headers: {
       apikey: supabaseKey,
@@ -433,8 +433,10 @@ export const handler = async (request, response) => {
 
   try {
     if (request.method === 'GET' && apiPath === '/api/v1/health') {
-      return json(response, 200, { status: 'ok', service: 'henry-turaso-law-council-api' })
+      return json(response, runtime.issues.length ? 503 : 200, { status: runtime.issues.length ? 'not_configured' : 'ok', service: 'henry-turaso-law-council-api', storage: runtime.storage, ...(runtime.issues.length ? { issues: runtime.issues } : {}) })
     }
+
+    if (runtime.issues.length) return json(response, 503, { message: 'The council API configuration is incomplete. Please contact the administrator.' })
 
     if (request.method === 'GET' && apiPath === '/api/v1/news/nigeria') {
       try {
@@ -894,7 +896,7 @@ export const handler = async (request, response) => {
       const password = String(body.password || '')
       const user = await findUserByEmail(email)
 
-      if (!user || !verifyPassword(password, user)) {
+      if (!user || user.role !== 'CLIENT' || user.active === false || !verifyPassword(password, user)) {
         return json(response, 401, { message: 'Invalid email or password.' })
       }
 
@@ -910,21 +912,18 @@ export const handler = async (request, response) => {
       const password = String(body.password || '')
       const user = await findUserByEmail(email)
 
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || user.role !== 'ADMIN' || user.active === false) {
         return json(response, 401, { message: 'Invalid admin email or password.' })
       }
 
-      if (!verifyPassword(password, user)) {
-        const configuredEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase()
-        const configuredPassword = process.env.ADMIN_PASSWORD || ''
-        if (email !== configuredEmail || !configuredPassword || !safeStringEqual(password, configuredPassword)) {
-          return json(response, 401, { message: 'Invalid admin email or password.' })
-        }
-
-        // Repair a stale database hash only after the configured admin password succeeds.
+      const primaryAdmin = user.role === 'ADMIN' && email === runtime.adminEmail
+      const passwordAccepted = primaryAdmin ? safeStringEqual(password, runtime.adminPassword) : verifyPassword(password, user)
+      if (!passwordAccepted) return json(response, 401, { message: 'Invalid admin email or password.' })
+      if (primaryAdmin && !verifyPassword(password, user)) {
         user.passwordSalt = randomBytes(16).toString('hex')
-        user.passwordHash = hashPassword(configuredPassword, user.passwordSalt)
-        await writeUsers([user])
+        user.passwordHash = hashPassword(runtime.adminPassword, user.passwordSalt)
+        const users = await readUsers()
+        await writeUsers(users.map((item) => item.id === user.id ? user : item))
       }
 
       return json(response, 200, {
@@ -1009,5 +1008,8 @@ export const handler = async (request, response) => {
 
 if (!process.env.VERCEL) {
   const server = createServer(handler)
-  server.listen(port, '0.0.0.0', () => console.log(`Law Council API listening on http://127.0.0.1:${port}`))
+  server.listen(port, process.env.API_HOST || '127.0.0.1', () => {
+    console.log(`Law Council API listening on http://127.0.0.1:${server.address().port}`)
+    if (runtime.issues.length) console.error(`Configuration incomplete: ${runtime.issues.join(' ')}`)
+  })
 }

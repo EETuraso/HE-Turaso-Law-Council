@@ -84,4 +84,3 @@ vite.config.ts.timestamp-*
 bower_components
 .lock-wscript
 .vercel
-.env*
