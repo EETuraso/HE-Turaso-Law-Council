@@ -7,10 +7,45 @@ Install dependencies with `npm install`, then run the Vite site with `npm run de
 To run the API as well, copy `.env.example` to `.env` and set unique values for
 `API_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. The administrator account is
 created from these values the first time the API initializes its user store.
-Start both the API and site with `npm run dev:full`.
+Start both the API and site with `npm run dev:full`. The API reads `.env` first,
+then `.env.local`; values in `.env.local` take priority. `.env.example` is a
+blank template and is never loaded. Keep credentials in the ignored local files.
+Run `npm run check:env` to validate settings without displaying secrets, and
+`npm test` to check authentication, confidentiality and task approvals.
+
+For a local demonstration without Supabase, explicitly set `API_STORAGE=local`.
+Vercel requires a complete Supabase configuration and refuses local file storage.
+A partial Supabase setup returns HTTP 503 rather than silently storing data locally.
 
 The API stores users, cases, consultations, and documents in `server/data/`.
 This runtime data is local and intentionally excluded from version control.
+
+## Chamber operations preview
+
+The `feature/chamber-operations-ai` branch adds the first staff-workflow
+increment to the existing admin sign-in page. The existing `ADMIN` account is
+treated as the Head Lawyer for backward compatibility. Head Lawyers can add
+staff accounts, grant and revoke case access, assign tasks to multiple staff,
+and approve submitted work or return it with correction instructions. Staff
+sign in through `admin.html` and see only their assigned tasks and explicitly
+authorized case records. A staff member cannot create or reassign official
+tasks.
+
+New local task and activity data is stored in `server/data/tasks.json` and
+`server/data/activity.json`. Supabase deployments must apply
+`supabase/migrations/20261102_chamber_operations.sql` before deploying this
+branch. The migration adds staff role values, task and activity tables while
+keeping existing user, case, and client data in place. Do not run schema changes
+against production until the preview deployment has been reviewed.
+
+The public AI assistant is available on public pages when `OPENAI_API_KEY` is
+configured server-side. It uses the OpenAI Responses API, receives only the
+verified public chamber profile, stores no provider conversation, and has a
+per-process request limit. Never expose the key through a `VITE_` variable.
+Authenticated client, lawyer, and operations assistant routes enforce role and
+record access, but their dashboard interfaces, document analysis, AI approval
+centre, email notifications, Google Calendar sync, and retention controls are
+still future work. The migration does not require an OpenAI key.
 
 ## Vercel deployment
 

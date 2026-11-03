@@ -1,0 +1,11 @@
+.git/
+.vercel/
+.env
+.env.*
+node_modules/
+server/data/
+dist/
+dist-*/
+*.log
+.tmp*/
+server/*.test.mjs

@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "api": "node --env-file-if-exists=.env server/server.mjs",
+    "api": "node --env-file-if-exists=.env --env-file-if-exists=.env.local server/server.mjs",
     "dev:full": "concurrently \"npm run api\" \"npm run dev\"",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:env": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/check-env.mjs",
+    "test": "node --test server/*.test.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

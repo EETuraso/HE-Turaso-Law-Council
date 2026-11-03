@@ -30,11 +30,18 @@ export type AdminDashboardData = {
   consultations: Array<{ reference: string; name: string; email: string; phone: string; practiceArea: string; preferredDate: string; preferredTime: string; message: string; status: string; createdAt: string }>
 }
 
-type AdminView = 'overview' | 'cases' | 'clients' | 'hearings' | 'documents' | 'messages' | 'consultations' | 'analytics' | 'settings' | 'case-detail'
+type AdminView = 'overview' | 'cases' | 'clients' | 'hearings' | 'documents' | 'messages' | 'consultations' | 'analytics' | 'operations' | 'settings' | 'case-detail'
+
+type OperationsData = {
+  staff: Array<{ id: string; firstName: string; lastName: string; email: string; phone: string; role: string; active: boolean; caseAccess: string[] }>
+  cases: Array<{ id: string; caseNumber: string; title: string; clientEmail?: string }>
+  tasks: Array<{ id: string; title: string; instructions: string; assigneeIds: string[]; caseId?: string | null; priority: string; dueAt: string; status: string; history?: Array<{ action: string; actorName?: string; feedback?: string; createdAt: string }> ; submission?: { note: string; submittedAt: string }; review?: { feedback: string; decision: string } }>
+  activity: Array<{ actorName?: string; action: string; createdAt: string; details?: Record<string, unknown> }>
+}
 
 const labels: Record<AdminView, string> = {
   overview: 'Overview', cases: 'Cases', clients: 'Clients', hearings: 'Hearings', documents: 'Documents',
-  messages: 'Messages', consultations: 'Consultations', analytics: 'Analytics', settings: 'Settings', 'case-detail': 'Case details'
+  messages: 'Messages', consultations: 'Consultations', analytics: 'Analytics', operations: 'Operations', settings: 'Settings', 'case-detail': 'Case details'
 }
 
 const escapeHTML = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] || character)
@@ -43,9 +50,64 @@ const dateLabel = (value: string, includeTime = false) => {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'Date not set' : date.toLocaleString([], includeTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' })
 }
+const taskStatusLabel = (task: { status: string; dueAt: string }) => {
+  const status = task.status.replaceAll('_', ' ')
+  return task.status !== 'APPROVED' && Date.parse(task.dueAt) < Date.now() ? `${status} · OVERDUE` : status
+}
+const taskHistory = (task: OperationsData['tasks'][number]) => `<details class="admin-task-history"><summary>Activity and approval history (${task.history?.length || 0})</summary>${(task.history || []).map((item) => `<p><strong>${escapeHTML(item.action.replaceAll('_', ' '))}</strong> · ${escapeHTML(item.actorName || 'Council')} · ${escapeHTML(dateLabel(item.createdAt, true))}${item.feedback ? `<br>${escapeHTML(item.feedback)}` : ''}</p>`).join('') || '<p>No activity has been recorded.</p>'}</details>`
+
+export const createStaffWorkspace = (root: HTMLElement, options: { apiBase: string; tokenKey: string }) => {
+  const escaped = (value: unknown) => escapeHTML(value)
+  const request = async (path: string, body?: unknown) => {
+    const token = localStorage.getItem(options.tokenKey)
+    const response = await fetch(`${options.apiBase}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
+    const result = await response.json().catch(() => ({})) as Record<string, unknown>
+    if (!response.ok) throw new Error(typeof result.message === 'string' ? result.message : `The server returned ${response.status}.`)
+    return result
+  }
+  const render = async () => {
+    const data = await request('/staff/dashboard') as { staff: { firstName: string; lastName: string; role: string; mustChangePassword?: boolean }; tasks: OperationsData['tasks']; cases: AdminCase[]; activity: Array<{ action: string; createdAt: string }> }
+    if (data.staff.mustChangePassword) {
+      root.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Secure your account</span><h1>Change your password</h1><p>Your account was created with a temporary password. Set a new password to open your workspace.</p></div></div><section class="admin-panel"><form id="staff-password-form" class="admin-note-form"><label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>New password<input name="newPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label><button class="admin-primary-action" type="submit">Update password</button><p class="admin-inline-note" role="status"></p></form></section>`
+      root.querySelector<HTMLFormElement>('#staff-password-form')?.addEventListener('submit', async (event) => {
+        event.preventDefault()
+        const form = event.currentTarget as HTMLFormElement
+        const note = form.querySelector<HTMLParagraphElement>('.admin-inline-note')
+        const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')
+        if (submit) submit.disabled = true
+        try {
+          await request('/auth/password', Object.fromEntries(new FormData(form).entries()))
+          location.reload()
+        } catch (error) {
+          if (note) note.textContent = error instanceof Error ? error.message : 'Unable to change password.'
+          if (submit) submit.disabled = false
+        }
+      })
+      return
+    }
+    root.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Staff workspace · ${escaped(data.staff.role.replaceAll('_', ' '))}</span><h1>Welcome, <em>${escaped(data.staff.firstName)}.</em></h1><p>Your assigned work and authorized case records.</p></div><button class="admin-link-button" id="staff-logout" type="button">Sign out</button></div><div class="admin-dashboard-grid admin-analytics-grid"><section class="admin-panel"><span class="eyebrow">Assignments</span><h2>My tasks</h2>${data.tasks.map((task) => `<article class="admin-consultation-row" data-task-activity="${escaped(task.id)}"><strong>${escaped(task.title)}</strong><p>${escaped(task.instructions)}</p><small>${escaped(task.priority)} · Due ${escaped(dateLabel(task.dueAt))} · ${escaped(taskStatusLabel(task))}</small>${task.review?.feedback ? `<p>Review feedback: ${escaped(task.review.feedback)}</p>` : ''}${['PENDING', 'ACCEPTED', 'IN_PROGRESS', 'REVISION_REQUIRED'].includes(task.status) ? `<form class="staff-task-update" data-task-id="${escaped(task.id)}"><label>Submission or progress note<textarea name="note" rows="2" maxlength="2000"></textarea></label><button class="admin-primary-action" name="status" value="${task.status === 'PENDING' ? 'ACCEPTED' : task.status === 'ACCEPTED' || task.status === 'REVISION_REQUIRED' ? 'IN_PROGRESS' : 'SUBMITTED_FOR_APPROVAL'}">${task.status === 'PENDING' ? 'Accept task' : task.status === 'ACCEPTED' || task.status === 'REVISION_REQUIRED' ? 'Start work' : 'Submit for approval'}</button><p class="admin-inline-note" role="status"></p></form>` : ''}</article>`).join('') || '<p class="admin-empty">No tasks have been assigned to you.</p>'}</section><section class="admin-panel"><span class="eyebrow">Authorized records</span><h2>My cases</h2>${data.cases.map((item) => `<article class="admin-hearing-row"><div><strong>${escaped(item.caseNumber)} · ${escaped(item.title)}</strong><small>${escaped(item.court)} · ${escaped(item.status)}</small></div><span>${escaped(item.clientEmail || '')}</span></article>`).join('') || '<p class="admin-empty">No case records are currently assigned to you.</p>'}</section></div>`
+    data.tasks.forEach((task) => {
+      const row = [...root.querySelectorAll<HTMLElement>('[data-task-activity]')].find((item) => item.dataset.taskActivity === task.id)
+      row?.insertAdjacentHTML('beforeend', taskHistory(task))
+    })
+    root.querySelector<HTMLButtonElement>('#staff-logout')?.addEventListener('click', () => { localStorage.removeItem(options.tokenKey); location.reload() })
+    root.querySelectorAll<HTMLFormElement>('.staff-task-update').forEach((form) => form.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      const button = (event.submitter as HTMLButtonElement | null)
+      const status = button?.value || ''
+      const note = form.querySelector<HTMLParagraphElement>('.admin-inline-note')
+      try {
+        await request('/staff/tasks/status', { taskId: form.dataset.taskId, status, note: (form.elements.namedItem('note') as HTMLTextAreaElement).value })
+        await render()
+      } catch (error) { if (note) note.textContent = error instanceof Error ? error.message : 'Unable to update task.' }
+    }))
+  }
+  return { render }
+}
 
 export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: string; tokenKey: string }) => {
   let data: AdminDashboardData | null = null
+  let operations: OperationsData | null = null
   let view: AdminView = 'overview'
   let selectedCaseId = ''
   let settingsNotice = ''
@@ -159,6 +221,12 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
   })
   const refresh = async () => {
     data = await authorizedRequest('/admin/dashboard') as AdminDashboardData
+    operations = null
+    render()
+  }
+
+  const loadOperations = async () => {
+    operations = await authorizedRequest('/admin/operations') as OperationsData
     render()
   }
 
@@ -329,7 +397,30 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     else if (view === 'messages') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Client correspondence</span><h1>Messages</h1><p>Messages included with consultation requests.</p></div></div><section class="admin-panel">${messages.length ? messages.map((item) => `<article class="admin-message-row"><div><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.email)} · ${escapeHTML(item.reference)} · ${escapeHTML(item.status)}</small></div><p>${escapeHTML(item.message)}</p></article>`).join('') : '<p class="admin-empty">No client messages have been received.</p>'}</section>`
     else if (view === 'consultations') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Appointment requests</span><h1>Consultations</h1><p>Review preferred slots and update each request. Appointments remain unconfirmed until the council contacts the client.</p></div></div><section class="admin-panel">${data.consultations.length ? data.consultations.map((item) => consultationRow(item)).join('') : '<p class="admin-empty">No consultation requests yet.</p>'}</section>`
     else if (view === 'analytics') content.innerHTML = `<div class="admin-view-heading"><div><span class="eyebrow">Workspace performance</span><h1>Analytics</h1><p>Live breakdowns calculated from cases, hearings, clients, documents, and consultation requests.</p></div></div><div class="admin-stats"><article class="admin-stat"><span>Total cases</span><b>${data.cases.length}</b><small>All recorded matters</small></article><article class="admin-stat"><span>Active cases</span><b>${data.stats.activeCases}</b><small>Currently in progress</small></article><article class="admin-stat"><span>Registered clients</span><b>${data.clients.length}</b><small>Client accounts</small></article><article class="admin-stat"><span>Pending consultations</span><b>${data.consultations.filter((item) => item.status === 'PENDING').length}</b><small>Awaiting review</small></article><article class="admin-stat"><span>Upcoming hearings</span><b>${data.stats.upcomingHearings}</b><small>Scheduled events</small></article><article class="admin-stat"><span>Case documents</span><b>${data.stats.totalDocuments}</b><small>Uploaded files</small></article></div><div class="admin-dashboard-grid admin-analytics-grid">${barChart('Cases by status', 'MATTER DISTRIBUTION', countBy(data.cases, (item) => item.status))}${barChart('Cases by practice area', 'PRACTICE MIX', countBy(data.cases, (item) => item.caseType))}${barChart('Consultations by status', 'REQUEST PIPELINE', countBy(data.consultations, (item) => item.status))}${barChart('Hearings by purpose', 'COURT CALENDAR', countBy(data.cases.flatMap((item) => item.hearings), (item) => item.purpose || 'Hearing'))}</div>`
+    else if (view === 'operations') {
+      content.innerHTML = renderOperations()
+      operations?.tasks.forEach((task) => {
+        const row = [...content.querySelectorAll<HTMLElement>('[data-task-activity]')].find((item) => item.dataset.taskActivity === task.id)
+        row?.insertAdjacentHTML('beforeend', taskHistory(task))
+      })
+    }
     else content.innerHTML = renderSettings()
+  }
+
+  const renderOperations = () => {
+    if (!operations) {
+      void loadOperations().catch((error) => window.alert(error instanceof Error ? error.message : 'Unable to load operations.'))
+      return '<div class="admin-view-heading"><div><span class="eyebrow">Chamber workspace</span><h1>Operations</h1><p>Loading staff, tasks and access records…</p></div></div>'
+    }
+    const op = operations as OperationsData
+    const pending = op.tasks.filter((task) => task.status === 'SUBMITTED_FOR_APPROVAL')
+    const caseOptions = op.cases.map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.caseNumber)} · ${escapeHTML(item.title)}</option>`).join('')
+    const staffOptions = op.staff.filter((item) => item.active && item.role !== 'ADMINISTRATOR').map((item) => `<label class="admin-setting-toggle"><input type="checkbox" name="assigneeIds" value="${escapeHTML(item.id)}"> ${escapeHTML(item.firstName)} ${escapeHTML(item.lastName)} · ${escapeHTML(item.role.replaceAll('_', ' '))}</label>`).join('')
+    return `<div class="admin-view-heading"><div><span class="eyebrow">Chamber workspace</span><h1>Operations</h1><p>Manage staff access, assign official work, and review submitted tasks.</p></div></div>
+      <div class="admin-dashboard-grid admin-analytics-grid"><section class="admin-panel"><span class="eyebrow">Staff management</span><h2>Add chamber member</h2><form class="admin-note-form" id="ops-staff-form"><div class="admin-form-grid"><label>First name<input name="firstName" required maxlength="80"></label><label>Last name<input name="lastName" required maxlength="80"></label><label>Email<input name="email" type="email" required maxlength="254"></label><label>Phone<input name="phone" maxlength="40"></label><label>Role<select name="role"><option value="SENIOR_LAWYER">Senior Lawyer</option><option value="ASSOCIATE_LAWYER">Associate Lawyer</option><option value="SECRETARY">Secretary</option><option value="CLERK">Clerk / Legal Assistant</option><option value="ADMINISTRATOR">Administrator</option></select></label><label>Temporary password<input name="password" type="password" minlength="12" required autocomplete="new-password"></label></div><button class="admin-primary-action" type="submit">Create staff account</button><p class="admin-inline-note" role="status"></p></form><div>${op.staff.map((staff) => `<article class="admin-directory-row"><div><strong>${escapeHTML(staff.firstName)} ${escapeHTML(staff.lastName)}</strong><small>${escapeHTML(staff.email)} · ${escapeHTML(staff.role.replaceAll('_', ' '))} · ${staff.active ? 'Active' : 'Inactive'}</small></div><button class="admin-link-button" type="button" data-staff-toggle="${escapeHTML(staff.id)}" data-active="${staff.active ? 'false' : 'true'}">${staff.active ? 'Deactivate' : 'Activate'}</button><form class="ops-access-form" data-staff-access="${escapeHTML(staff.id)}"><strong>Authorized cases</strong>${op.cases.map((item) => `<label class="admin-setting-toggle"><input type="checkbox" name="caseIds" value="${escapeHTML(item.id)}" ${staff.caseAccess.includes(item.id) ? 'checked' : ''}> ${escapeHTML(item.caseNumber)} · ${escapeHTML(item.title)}</label>`).join('') || '<small>No cases available.</small>'}<button class="admin-link-button" type="submit">Save case access</button><p class="admin-inline-note" role="status"></p></form></article>`).join('') || '<p class="admin-empty">No staff accounts yet.</p>'}</div></section>
+      <section class="admin-panel"><span class="eyebrow">Task assignment</span><h2>Create official task</h2><p class="admin-settings-description">Only the Head Lawyer can assign official work. All submissions require review.</p><form class="admin-note-form" id="ops-task-form"><label>Task title<input name="title" maxlength="160" required></label><label>Instructions<textarea name="instructions" rows="4" maxlength="5000" required></textarea></label><label>Link to case (optional)<select name="caseId"><option value="">No case link</option>${caseOptions}</select></label><label>Deadline<input name="dueAt" type="datetime-local" required></label><label>Priority<select name="priority"><option>NORMAL</option><option>LOW</option><option>HIGH</option><option>URGENT</option></select></label><fieldset><legend>Assign to staff</legend>${staffOptions || '<p class="admin-empty">Create active staff accounts first.</p>'}</fieldset><button class="admin-primary-action" type="submit">Assign task</button><p class="admin-inline-note" role="status"></p></form></section></div>
+      <section class="admin-panel"><span class="eyebrow">Approval queue</span><h2>Submitted work</h2>${pending.map((task) => `<article class="admin-consultation-row"><strong>${escapeHTML(task.title)}</strong><p>${escapeHTML(task.submission?.note || 'No submission note provided.')}</p><small>Due ${escapeHTML(dateLabel(task.dueAt))}</small><form class="ops-review-form" data-task-review="${escapeHTML(task.id)}"><label>Review feedback<textarea name="feedback" rows="2" maxlength="2000" placeholder="Required for revision requests"></textarea></label><button class="admin-primary-action" name="decision" value="APPROVED">Approve</button><button class="admin-link-button" name="decision" value="REVISION_REQUIRED">Request revisions</button><p class="admin-inline-note" role="status"></p></form></article>`).join('') || '<p class="admin-empty">No work is awaiting approval.</p>'}</section>
+      <section class="admin-panel"><span class="eyebrow">Workflow</span><h2>Task register</h2>${op.tasks.map((task) => `<article class="admin-hearing-row" data-task-activity="${escapeHTML(task.id)}"><div><strong>${escapeHTML(task.title)}</strong><small>${escapeHTML(task.priority)} · due ${escapeHTML(dateLabel(task.dueAt))} · ${escapeHTML(taskStatusLabel(task))}</small></div><span>${escapeHTML(op.staff.filter((staff) => task.assigneeIds.includes(staff.id)).map((staff) => `${staff.firstName} ${staff.lastName}`).join(', '))}</span></article>`).join('') || '<p class="admin-empty">No tasks have been assigned.</p>'}</section>`
   }
 
   const setView = (nextView: AdminView) => {
@@ -341,6 +432,15 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
   root.addEventListener('click', async (event) => {
     const target = event.target
     if (!(target instanceof Element)) return
+    const staffToggle = target.closest<HTMLButtonElement>('[data-staff-toggle]')
+    if (staffToggle) {
+      try {
+        await authorizedRequest(`/admin/staff/${encodeURIComponent(staffToggle.dataset.staffToggle || '')}/status`, { active: staffToggle.dataset.active === 'true' })
+        operations = null
+        await loadOperations()
+      } catch (error) { window.alert(error instanceof Error ? error.message : 'Unable to update staff account.') }
+      return
+    }
     const navButton = target.closest<HTMLButtonElement>('[data-admin-nav]')
     if (navButton) {
       setView(navButton.dataset.adminNav as AdminView)
@@ -451,7 +551,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
 
   root.addEventListener('submit', async (event) => {
     const form = event.target
-    if (!(form instanceof HTMLFormElement) || (!['admin-create-case-form', 'admin-case-note-form', 'admin-case-hearing-form', 'admin-case-document-form', 'admin-settings-form'].includes(form.id) && !form.dataset.approveClient && !form.dataset.adminChat)) return
+    if (!(form instanceof HTMLFormElement) || (!['admin-create-case-form', 'admin-case-note-form', 'admin-case-hearing-form', 'admin-case-document-form', 'admin-settings-form', 'ops-staff-form', 'ops-task-form'].includes(form.id) && !form.dataset.approveClient && !form.dataset.adminChat && !form.dataset.staffAccess && !form.dataset.taskReview)) return
     event.preventDefault()
     const note = form.querySelector<HTMLParagraphElement>('.admin-inline-note')
     const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')
@@ -460,6 +560,21 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
     try {
       let path = '/admin/cases'
       let body: unknown = Object.fromEntries(new FormData(form).entries())
+      const formData = new FormData(form)
+      if (form.id === 'ops-staff-form') path = '/admin/staff'
+      if (form.id === 'ops-task-form') {
+        path = '/admin/tasks'
+        const dueAt = String(formData.get('dueAt') || '')
+        body = { title: formData.get('title'), instructions: formData.get('instructions'), caseId: formData.get('caseId'), priority: formData.get('priority'), dueAt: new Date(dueAt).toISOString(), assigneeIds: formData.getAll('assigneeIds') }
+      }
+      if (form.dataset.staffAccess) {
+        path = `/admin/staff/${encodeURIComponent(form.dataset.staffAccess)}/case-access`
+        body = { caseIds: formData.getAll('caseIds') }
+      }
+      if (form.dataset.taskReview) {
+        path = `/admin/tasks/${encodeURIComponent(form.dataset.taskReview)}/review`
+        body = { decision: (event.submitter as HTMLButtonElement | null)?.value, feedback: formData.get('feedback') }
+      }
       if (form.dataset.approveClient) path = `/admin/clients/${encodeURIComponent(form.dataset.approveClient)}/approve`
       if (form.dataset.adminChat) path = `/cases/${encodeURIComponent(form.dataset.adminChat)}/chat`
       if (form.id === 'admin-case-note-form') path = `/admin/cases/${encodeURIComponent(selectedCaseId)}/notes`
@@ -488,6 +603,7 @@ export const createAdminWorkspace = (root: HTMLElement, options: { apiBase: stri
         body = { title: (form.elements.namedItem('title') as HTMLInputElement).value, fileName: file.name, mimeType: file.type, fileData: await fileAsBase64(file) }
       }
       await authorizedRequest(path, body)
+      if (form.id === 'ops-staff-form' || form.id === 'ops-task-form' || form.dataset.staffAccess || form.dataset.taskReview) operations = null
       if (form.id === 'admin-settings-form') settingsNotice = 'Settings saved.'
       await refresh()
       if (form.id === 'admin-create-case-form') view = 'cases'

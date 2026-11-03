@@ -1,7 +1,7 @@
 create table if not exists public.law_users (
   id text primary key,
   email text not null unique,
-  role text not null check (role in ('ADMIN', 'CLIENT')),
+  role text not null check (role in ('ADMIN', 'CLIENT', 'HEAD_LAWYER', 'SENIOR_LAWYER', 'ASSOCIATE_LAWYER', 'SECRETARY', 'CLERK', 'ADMINISTRATOR')),
   payload jsonb not null
 );
 
@@ -22,16 +22,33 @@ create table if not exists public.law_consultations (
 create table if not exists public.law_sessions (
   token_hash text primary key,
   user_id text not null references public.law_users(id) on delete cascade,
-  role text not null check (role in ('ADMIN', 'CLIENT')),
+  role text not null check (role in ('ADMIN', 'CLIENT', 'HEAD_LAWYER', 'SENIOR_LAWYER', 'ASSOCIATE_LAWYER', 'SECRETARY', 'CLERK', 'ADMINISTRATOR')),
   expires_at timestamptz not null
 );
 
 create index if not exists law_sessions_expiry_idx on public.law_sessions (expires_at);
 
+create table if not exists public.law_tasks (
+  id text primary key,
+  status text not null,
+  payload jsonb not null
+);
+
+create table if not exists public.law_activity (
+  id text primary key,
+  created_at timestamptz not null,
+  payload jsonb not null
+);
+
+create index if not exists law_tasks_status_idx on public.law_tasks (status);
+create index if not exists law_activity_created_at_idx on public.law_activity (created_at desc);
+
 alter table public.law_users enable row level security;
 alter table public.law_cases enable row level security;
 alter table public.law_consultations enable row level security;
 alter table public.law_sessions enable row level security;
+alter table public.law_tasks enable row level security;
+alter table public.law_activity enable row level security;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (

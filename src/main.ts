@@ -1,5 +1,5 @@
 import './style.css'
-import { createAdminWorkspace, type AdminDashboardData } from './admin-dashboard'
+import { createAdminWorkspace, createStaffWorkspace, type AdminDashboardData } from './admin-dashboard'
 
 type PublicPage = 'home' | 'about' | 'chamber' | 'services' | 'insights' | 'contact'
 type Page = PublicPage | 'portal' | 'admin'
@@ -49,12 +49,60 @@ const pages: Record<PublicPage | 'admin', string> = {
   services: `<section class="page-hero section-shell"><div class="section-label">03 <span>What we do</span></div><h1>Practice<br><em>areas.</em></h1><p>Focused expertise for the decisions that matter most.</p></section><section class="section-shell service-overview"><div class="service-grid large-grid">${serviceCards}</div></section>`,
   insights: `<section class="page-hero section-shell"><div class="section-label">04 <span>From the council</span></div><h1>Legal<br><em>insights.</em></h1><p>Clear starting points for making informed decisions.</p></section><section class="section-shell insights-wrap"><div class="insight-grid">${insightCards}</div></section>`,
   contact: `<section class="page-hero section-shell"><div class="section-label">Contact</div><h1>Contact the<br><em>council.</em></h1><p>Reach Henry E Turaso Law Council by email or visit the Chamber at Besite Malamre Clinic, Jimeta, Yola, Adamawa State.</p></section><section class="section-shell contact-info" id="contact-info"><div><span class="eyebrow">Office</span><p data-public-office-address>Besite Malamre Clinic, Jimeta, Yola, Adamawa State, Nigeria</p></div><div><span class="eyebrow">Email</span><p><a data-public-contact-email href="mailto:emmanuelturaso@gmail.com">emmanuelturaso@gmail.com</a></p><p><a data-public-contact-phone></a></p></div><div><span class="eyebrow">Appointments</span><p data-public-appointment-policy>By appointment</p></div></section><section class="section-shell consultation-section" id="consultation"><div class="consultation-heading"><span class="eyebrow">Appointment request</span><h2>Book a <em>consultation.</em></h2><p>Send your preferred time and the council will contact you to confirm availability. Submitting this form does not confirm an appointment.</p></div><form class="consultation-form" id="consultation-form"><label>Full name<input name="name" required autocomplete="name" maxlength="120" placeholder="Your full name"></label><label>Email address<input name="email" type="email" required autocomplete="email" maxlength="254" placeholder="you@example.com"></label><label>Phone number<input name="phone" type="tel" required autocomplete="tel" maxlength="40" placeholder="Your phone number"></label><label>Practice area<select name="practiceArea" required><option value="" disabled selected>Select a practice area</option>${services.map(([, title]) => `<option>${title}</option>`).join('')}</select></label><label>Preferred date<input name="preferredDate" type="date" required></label><label>Preferred time<input name="preferredTime" type="time" required></label><label class="consultation-message">Briefly describe what you need<textarea name="message" rows="4" maxlength="2000" placeholder="Share a short summary; avoid including confidential details at this stage."></textarea></label><button class="button button-gold" type="submit">Send consultation request <span>↗</span></button><p class="form-note consultation-note" role="status" aria-live="polite"></p></form></section>`,
-  admin: `<section class="admin-area admin-page"><form class="admin-login" id="admin-login-form"><a class="brand admin-login-brand" href="index.html"><span class="brand-mark">§</span><span class="brand-text"><strong data-public-principal>Henry E Turaso</strong><small data-public-council-label>Law Council</small></span></a><div class="section-label">Administrator access <span>Secure sign in</span></div><label>Email address<input name="admin-email" type="email" required placeholder="admin@henryturasolaw.com"></label><label>Password<input name="admin-password" type="password" required placeholder="Enter your password"></label><button class="button button-gold" type="submit">Open admin dashboard <span>→</span></button><p class="form-note" role="status"></p></form><div class="admin-dashboard" id="admin-dashboard" hidden><aside class="admin-sidebar"><div class="admin-brand"><span class="brand-mark">§</span><span><strong data-admin-council-name>Henry E Turaso Law Council</strong><small>COUNCIL ADMIN</small></span></div><div class="admin-user"><span class="admin-avatar">HT</span><span><strong data-admin-user-name>Henry Turaso</strong><small>Administrator</small></span></div><nav class="admin-nav" aria-label="Admin sections"><button class="is-active" type="button" data-admin-nav="overview">Overview</button><button type="button" data-admin-nav="cases">Cases</button><button type="button" data-admin-nav="clients">Clients</button><button type="button" data-admin-nav="hearings">Hearings</button><button type="button" data-admin-nav="documents">Documents</button><button type="button" data-admin-nav="messages">Messages</button><button type="button" data-admin-nav="consultations">Consultations</button><button type="button" data-admin-nav="reports">Reports</button><button type="button" data-admin-nav="settings">Settings</button></nav><button class="admin-signout" id="admin-logout" type="button">Sign out</button></aside><div class="admin-main"><header class="admin-topbar"><div><span class="eyebrow">COUNCIL WORKSPACE</span><span id="admin-view-label">Overview</span></div><div id="admin-clock" class="admin-clock-widget" aria-label="Current time"><svg class="admin-analog-clock" viewBox="0 0 100 100" role="img" aria-label="Analog clock"><circle cx="50" cy="50" r="46"/><path d="M50 8v5M50 87v5M8 50h5M87 50h5"/><line data-clock-hour x1="50" y1="50" x2="50" y2="29"/><line data-clock-minute x1="50" y1="50" x2="50" y2="19"/><line data-clock-second x1="50" y1="54" x2="50" y2="14"/><circle class="clock-pin" cx="50" cy="50" r="2.5"/></svg><div class="admin-clock-readout"><time data-clock-digital></time><time data-clock-date></time></div></div><span class="admin-secure">SECURE SESSION</span></header><div class="admin-view-content" id="admin-view-content" aria-live="polite"></div></div></div></section>`
+  admin: `<section class="admin-area admin-page"><form class="admin-login" id="admin-login-form"><a class="brand admin-login-brand" href="index.html"><span class="brand-mark">§</span><span class="brand-text"><strong data-public-principal>Henry E Turaso</strong><small data-public-council-label>Law Council</small></span></a><div class="section-label">Staff and administrator access <span>Secure sign in</span></div><label>Email address<input name="admin-email" type="email" required placeholder="Your work email"></label><label>Password<input name="admin-password" type="password" required placeholder="Enter your password"></label><button class="button button-gold" type="submit">Open workspace <span>→</span></button><p class="form-note" role="status"></p></form><div class="admin-dashboard" id="admin-dashboard" hidden><aside class="admin-sidebar"><div class="admin-brand"><span class="brand-mark">§</span><span><strong data-admin-council-name>Henry E Turaso Law Council</strong><small>COUNCIL ADMIN</small></span></div><div class="admin-user"><span class="admin-avatar">HT</span><span><strong data-admin-user-name>Henry Turaso</strong><small>Head Lawyer</small></span></div><nav class="admin-nav" aria-label="Admin sections"><button class="is-active" type="button" data-admin-nav="overview">Overview</button><button type="button" data-admin-nav="cases">Cases</button><button type="button" data-admin-nav="clients">Clients</button><button type="button" data-admin-nav="hearings">Hearings</button><button type="button" data-admin-nav="documents">Documents</button><button type="button" data-admin-nav="messages">Messages</button><button type="button" data-admin-nav="consultations">Consultations</button><button type="button" data-admin-nav="reports">Reports</button><button type="button" data-admin-nav="operations">Operations</button><button type="button" data-admin-nav="settings">Settings</button></nav><button class="admin-signout" id="admin-logout" type="button">Sign out</button></aside><div class="admin-main"><header class="admin-topbar"><div><span class="eyebrow">COUNCIL WORKSPACE</span><span id="admin-view-label">Overview</span></div><div id="admin-clock" class="admin-clock-widget" aria-label="Current time"><svg class="admin-analog-clock" viewBox="0 0 100 100" role="img" aria-label="Analog clock"><circle cx="50" cy="50" r="46"/><path d="M50 8v5M50 87v5M8 50h5M87 50h5"/><line data-clock-hour x1="50" y1="50" x2="50" y2="29"/><line data-clock-minute x1="50" y1="50" x2="50" y2="19"/><line data-clock-second x1="50" y1="54" x2="50" y2="14"/><circle class="clock-pin" cx="50" cy="50" r="2.5"/></svg><div class="admin-clock-readout"><time data-clock-digital></time><time data-clock-date></time></div></div><span class="admin-secure">SECURE SESSION</span></header><div class="admin-view-content" id="admin-view-content" aria-live="polite"></div></div></div></section>`
 }
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = page === 'admin'
   ? `<main id="top">${pages.admin}</main>`
   : `${header}<main id="top">${page === 'portal' ? clientPortalPage : pages[page] || pages.home}</main>${footer}`
+
+if (!['admin', 'portal'].includes(page)) {
+  document.body.insertAdjacentHTML('beforeend', `<aside class="public-ai" aria-label="AI assistant"><button class="public-ai-launch" id="public-ai-launch" type="button" aria-expanded="false" aria-controls="public-ai-panel">Ask our AI assistant</button><section class="public-ai-panel" id="public-ai-panel" aria-label="Public AI assistant" hidden><header><div><span class="eyebrow">AI assistant</span><strong>How can I help?</strong></div><button type="button" id="public-ai-close" aria-label="Close assistant">×</button></header><p class="public-ai-disclaimer">I’m an AI assistant, not a lawyer or chamber employee. Please don’t share confidential details.</p><div class="public-ai-messages" id="public-ai-messages" aria-live="polite"><p class="public-ai-message assistant">I can explain the council’s services or share general legal information. For advice about your situation, please speak with a lawyer.</p></div><form id="public-ai-form"><label for="public-ai-input">Your question</label><textarea id="public-ai-input" name="message" rows="2" maxlength="2000" required placeholder="Ask a general question"></textarea><button class="button button-gold" type="submit">Send</button><p class="public-ai-note" role="status"></p></form></section></aside>`)
+  const launch = document.querySelector<HTMLButtonElement>('#public-ai-launch')
+  const panel = document.querySelector<HTMLElement>('#public-ai-panel')
+  const close = document.querySelector<HTMLButtonElement>('#public-ai-close')
+  const chatForm = document.querySelector<HTMLFormElement>('#public-ai-form')
+  const chatMessages = document.querySelector<HTMLDivElement>('#public-ai-messages')
+  const chatInput = document.querySelector<HTMLTextAreaElement>('#public-ai-input')
+  const chatNote = document.querySelector<HTMLParagraphElement>('.public-ai-note')
+  const conversation: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  const setPanelOpen = (open: boolean) => { if (panel) panel.hidden = !open; launch?.setAttribute('aria-expanded', String(open)); if (open) chatInput?.focus() }
+  launch?.addEventListener('click', () => setPanelOpen(Boolean(panel?.hidden)))
+  close?.addEventListener('click', () => setPanelOpen(false))
+  chatForm?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (!chatInput || !chatMessages) return
+    const prompt = chatInput.value.trim()
+    if (!prompt) return
+    chatInput.value = ''
+    chatNote && (chatNote.textContent = 'Thinking…')
+    const userMessage = document.createElement('p')
+    userMessage.className = 'public-ai-message user'
+    userMessage.textContent = prompt
+    chatMessages.append(userMessage)
+    conversation.push({ role: 'user', content: prompt })
+    const submit = chatForm.querySelector<HTMLButtonElement>('button[type="submit"]')
+    if (submit) submit.disabled = true
+    try {
+      const response = await fetch(`${apiBase}/ai/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assistant: 'public', messages: conversation.slice(-12) }) })
+      const result = await response.json() as { answer?: string; message?: string }
+      if (!response.ok || !result.answer) throw new Error(result.message || 'The assistant is temporarily unavailable.')
+      conversation.push({ role: 'assistant', content: result.answer })
+      const assistantMessage = document.createElement('p')
+      assistantMessage.className = 'public-ai-message assistant'
+      assistantMessage.textContent = result.answer
+      chatMessages.append(assistantMessage)
+      if (chatNote) chatNote.textContent = ''
+    } catch (error) {
+      conversation.pop()
+      if (chatNote) chatNote.textContent = error instanceof Error ? error.message : 'The assistant is temporarily unavailable.'
+    } finally {
+      if (submit) submit.disabled = false
+      chatMessages.scrollTop = chatMessages.scrollHeight
+      chatInput.focus()
+    }
+  })
+}
 
 const passwordControls = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]')).map((input) => {
   const label = input.closest('label')!
@@ -420,9 +468,12 @@ if (clientLoginForm && clientSignupForm && clientDashboard) {
 const adminLoginForm = document.querySelector<HTMLFormElement>('#admin-login-form')
 const adminDashboard = document.querySelector<HTMLElement>('#admin-dashboard')
 const adminTokenKey = 'henry-turaso-admin-token'
+let staffSessionActive = false
 const adminWorkspace = adminDashboard ? createAdminWorkspace(adminDashboard, { apiBase, tokenKey: adminTokenKey }) : null
+const staffWorkspace = adminDashboard ? createStaffWorkspace(adminDashboard, { apiBase, tokenKey: adminTokenKey }) : null
 const renderAdminDashboard = (data: AdminDashboardData) => {
   if (!adminDashboard || !adminLoginForm) return
+  staffSessionActive = false
   hidePasswords()
   adminLoginForm.hidden = true; adminDashboard.hidden = false; adminWorkspace?.render(data)
 }
@@ -447,14 +498,26 @@ const restoreAdminSession = async () => {
     const response = await fetch(`${apiBase}/admin/dashboard`, { headers: { Authorization: `Bearer ${token}` } })
     renderAdminDashboard(await readApiResult<AdminDashboardData>(response))
   } catch {
-    localStorage.removeItem(adminTokenKey)
-    if (note) note.textContent = 'Your saved session expired. Sign in to continue.'
+    try {
+      const response = await fetch(`${apiBase}/staff/dashboard`, { headers: { Authorization: `Bearer ${token}` } })
+      if (!response.ok) throw new Error('Session expired')
+      if (adminLoginForm) adminLoginForm.hidden = true
+      if (adminDashboard) adminDashboard.hidden = false
+      staffSessionActive = true
+      await staffWorkspace?.render()
+    } catch {
+      localStorage.removeItem(adminTokenKey)
+      if (note) note.textContent = 'Your saved session expired. Sign in to continue.'
+    }
   } finally { if (submit) submit.disabled = false }
 }
 if (adminLoginForm && adminDashboard) {
   const restoreSession = restoreAdminSession()
   window.setInterval(() => {
-    if (localStorage.getItem(adminTokenKey) && !adminDashboard.querySelector('form:focus-within')) adminWorkspace?.refresh().catch(() => {})
+    if (localStorage.getItem(adminTokenKey) && !adminDashboard.querySelector('form:focus-within')) {
+      if (staffSessionActive) staffWorkspace?.render().catch(() => {})
+      else adminWorkspace?.refresh().catch(() => {})
+    }
   }, 15000)
   adminLoginForm.addEventListener('submit', async (event) => {
     event.preventDefault()
@@ -468,13 +531,19 @@ if (adminLoginForm && adminDashboard) {
     submit.disabled = true
     try {
       const response = await fetch(`${apiBase}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.value.trim().toLowerCase(), password: password.value }) })
-      const result = await readApiResult<{ accessToken?: string; user?: { role?: string } }>(response)
-      if (!result.accessToken || result.user?.role !== 'ADMIN') throw new Error('This sign-in is for administrator accounts only.')
-      const dashboardResponse = await fetch(`${apiBase}/admin/dashboard`, { headers: { Authorization: `Bearer ${result.accessToken}` } })
-      const dashboard = await readApiResult<AdminDashboardData>(dashboardResponse)
+      const result = await readApiResult<{ accessToken?: string; user?: { role?: string; mustChangePassword?: boolean } }>(response)
+      if (!result.accessToken || !result.user?.role) throw new Error('Unable to start this staff session.')
       localStorage.setItem(adminTokenKey, result.accessToken)
       note.textContent = ''
-      renderAdminDashboard(dashboard)
+      if (['ADMIN', 'HEAD_LAWYER'].includes(result.user.role) && !result.user.mustChangePassword) {
+        const dashboardResponse = await fetch(`${apiBase}/admin/dashboard`, { headers: { Authorization: `Bearer ${result.accessToken}` } })
+        renderAdminDashboard(await readApiResult<AdminDashboardData>(dashboardResponse))
+      } else {
+        adminLoginForm.hidden = true
+        if (adminDashboard) adminDashboard.hidden = false
+        staffSessionActive = true
+        await staffWorkspace?.render()
+      }
     } catch (error) {
       localStorage.removeItem(adminTokenKey)
       note.textContent = error instanceof Error ? error.message : 'Unable to sign in.'
@@ -483,6 +552,6 @@ if (adminLoginForm && adminDashboard) {
   document.querySelector<HTMLButtonElement>('#admin-logout')?.addEventListener('click', async () => {
     const token = localStorage.getItem(adminTokenKey)
     if (token) try { await fetch(`${apiBase}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }) } catch { /* local session still clears */ }
-    localStorage.removeItem(adminTokenKey); adminWorkspace?.reset(); adminDashboard.hidden = true; adminLoginForm.hidden = false
+    localStorage.removeItem(adminTokenKey); staffSessionActive = false; adminWorkspace?.reset(); adminDashboard.hidden = true; adminLoginForm.hidden = false
   })
 }
