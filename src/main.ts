@@ -1,6 +1,7 @@
 import './style.css'
 import './typography.css'
 import './layout.css'
+import './footer.css'
 import { createAdminWorkspace, createStaffWorkspace, type AdminDashboardData } from './admin-dashboard'
 
 type PublicPage = 'home' | 'about' | 'chamber' | 'services' | 'insights' | 'contact'
@@ -25,7 +26,31 @@ const serviceCards = services.map(([number, title, description]) => `<article cl
 const insightCards = insights.map(([number, title, description, source, image, imageAlt]) => `<article class="insight-card"><div class="insight-art"><img src="${image}" alt="${imageAlt}" loading="lazy" decoding="async" width="1200" height="800"></div><div><span class="eyebrow">Legal insight ${number}</span><h3><a href="${source}" target="_blank" rel="noopener noreferrer">${title} <span class="external-mark">↗</span></a></h3><p>${description}</p><a href="${links.contact}" class="inline-link">Discuss this topic <span>→</span></a></div></article>`).join('')
 
 const header = `<header class="site-header"><a class="brand" href="index.html" aria-label="Henry E Turaso Law Council home"><span class="brand-mark">§</span><span class="brand-text"><strong data-public-principal>Henry E Turaso</strong><small data-public-council-label>Law Council</small></span></a><button class="menu-toggle" aria-label="Open navigation" aria-expanded="false">☰</button><nav class="site-nav" aria-label="Primary navigation"><a href="index.html">Home</a><a href="${links.about}">About</a><a href="${links.services}">Practice Areas</a><a href="${links.chamber}">The Chamber</a><a href="${links.insights}">Insights</a><a href="${links.contact}#contact-info">Get in Touch</a><a href="${links.portal}">Client Portal</a><a class="nav-consult" href="${links.contact}#consultation">Book Consultation</a></nav></header>`
-const footer = `<footer class="site-footer section-shell"><a class="brand" href="index.html"><span class="brand-mark">§</span><span class="brand-text"><strong data-public-principal>Henry E Turaso</strong><small data-public-council-label>Law Council</small></span></a><p data-public-tagline>Professional legal services. Thoughtfully delivered.</p><span class="copyright">© ${new Date().getFullYear()} <span data-public-council-name>Henry E Turaso Law Council</span></span></footer>`
+const footer = `
+  <footer class="site-footer">
+    <div class="footer-shell section-shell">
+      <div class="footer-invitation">
+        <div><p class="footer-eyebrow">Here for your next step</p><h2>Clarity starts with<br><em>a conversation.</em></h2></div>
+        <a class="button button-gold footer-consult" href="${links.contact}#consultation">Book a consultation <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="footer-main">
+        <div class="footer-identity">
+          <a class="brand" href="index.html" aria-label="Henry E Turaso Law Council home"><span class="brand-mark" aria-hidden="true">§</span><span class="brand-text"><strong data-public-principal>Henry E Turaso</strong><small data-public-council-label>Law Council</small></span></a>
+          <p data-public-tagline>Professional legal services. Thoughtfully delivered.</p>
+        </div>
+        <nav class="footer-navigation" aria-label="Footer navigation">
+          <h3>Explore the council</h3>
+          <div class="footer-links"><a href="${links.about}">About us</a><a href="${links.services}">Practice areas</a><a href="${links.chamber}">The chamber</a><a href="${links.insights}">Legal insights</a><a href="${links.portal}">Client portal</a></div>
+        </nav>
+        <div class="footer-contact">
+          <h3>Visit the chamber</h3>
+          <address><p data-public-office-address>Besite Malamre Clinic, Jimeta, Yola, Adamawa State, Nigeria</p><p><a data-public-contact-email href="mailto:emmanuelturaso@gmail.com">emmanuelturaso@gmail.com</a></p><p hidden><a data-public-contact-phone></a></p></address>
+          <p class="footer-appointment"><span aria-hidden="true"></span><span data-public-appointment-policy>By appointment</span></p>
+        </div>
+      </div>
+      <div class="footer-bottom"><p class="copyright">© ${new Date().getFullYear()} <span data-public-council-name>Henry E Turaso Law Council</span></p><a class="footer-back" href="#top">Back to top <span aria-hidden="true">↑</span></a></div>
+    </div>
+  </footer>`
 const trustBand = `<section class="trust-band"><div class="section-shell trust-grid"><div class="trust-intro"><span class="eyebrow">The standard we keep</span><h2>Good counsel is <em>personal.</em></h2></div><div class="trust-point"><strong>01</strong><h3>Confidential by nature</h3><p>Your information is handled with discretion, care and respect.</p></div><div class="trust-point"><strong>02</strong><h3>Clear by design</h3><p>We communicate in plain language, so you can decide with confidence.</p></div><div class="trust-point"><strong>03</strong><h3>Steady in practice</h3><p>Thoughtful preparation and disciplined advocacy from first call to resolution.</p></div></div></section>`
 const newsSection = `<section class="news-feed section-shell" id="nigeria-news"><div class="section-heading"><div><div class="section-label">05 <span>From Nigeria</span></div><h2>News <em>briefing.</em></h2></div><a class="text-link" href="https://news.google.com/search?q=Nigeria&hl=en-NG&gl=NG&ceid=NG%3Aen" target="_blank" rel="noopener noreferrer">View all Nigeria news <span>↗</span></a></div><div class="news-grid" id="news-grid"><article class="news-card news-loading"><span class="eyebrow">Loading latest stories</span><p>Fetching current headlines from Nigeria.</p></article></div></section>`
 
@@ -186,17 +211,15 @@ const loadPublicSettings = async () => {
     document.querySelectorAll<HTMLElement>('[data-public-council-name]').forEach((node) => { node.textContent = settings.councilName || '' })
     document.querySelectorAll<HTMLElement>('[data-public-council-label]').forEach((node) => { node.textContent = (settings.councilName || '').replace(settings.principalName || '', '').trim() })
     document.querySelectorAll<HTMLElement>('[data-public-tagline]').forEach((node) => { node.textContent = settings.tagline || '' })
-    const address = document.querySelector<HTMLElement>('[data-public-office-address]')
-    if (address) address.textContent = settings.officeAddress || ''
-    const email = document.querySelector<HTMLAnchorElement>('[data-public-contact-email]')
-    if (email && settings.contactEmail) { email.href = 'mailto:' + settings.contactEmail; email.textContent = settings.contactEmail }
-    const phone = document.querySelector<HTMLAnchorElement>('[data-public-contact-phone]')
-    if (phone) {
-      if (settings.contactPhone) { phone.href = 'tel:' + settings.contactPhone.replace(/[^+0-9]/g, ''); phone.textContent = settings.contactPhone }
+    document.querySelectorAll<HTMLElement>('[data-public-office-address]').forEach((address) => { address.textContent = settings.officeAddress || '' })
+    document.querySelectorAll<HTMLAnchorElement>('[data-public-contact-email]').forEach((email) => {
+      if (settings.contactEmail) { email.href = 'mailto:' + settings.contactEmail; email.textContent = settings.contactEmail }
+    })
+    document.querySelectorAll<HTMLAnchorElement>('[data-public-contact-phone]').forEach((phone) => {
+      if (settings.contactPhone) { phone.href = 'tel:' + settings.contactPhone.replace(/[^+0-9]/g, ''); phone.textContent = settings.contactPhone; phone.parentElement?.removeAttribute('hidden') }
       else phone.parentElement?.remove()
-    }
-    const appointment = document.querySelector<HTMLElement>('[data-public-appointment-policy]')
-    if (appointment) appointment.textContent = settings.appointmentPolicy || ''
+    })
+    document.querySelectorAll<HTMLElement>('[data-public-appointment-policy]').forEach((appointment) => { appointment.textContent = settings.appointmentPolicy || '' })
     if (settings.siteContent && !new URLSearchParams(location.search).has('visualClean')) applySiteContent(settings.siteContent)
   } catch { /* Keep the static profile if the settings API is temporarily unavailable. */ }
 }
