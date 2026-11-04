@@ -4,12 +4,12 @@
 
 Install dependencies with `npm install`, then run the Vite site with `npm run dev`.
 
-To run the API as well, copy `.env.example` to `.env` and set unique values for
+To run the API as well, create or update the local `.env` file and set unique values for
 `API_SECRET`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. The administrator account is
 created from these values the first time the API initializes its user store.
-Start both the API and site with `npm run dev:full`. The API loads `.env` and
-then `.env.local`. Run `npm run check:env` to validate settings without printing
-secrets. Set `API_STORAGE=local` explicitly for local JSON storage; Vercel
+Start both the API and site with `npm run dev:full`. The API loads only `.env`.
+Keep this local file out of version control. Run `npm run check:env` to validate
+settings without printing secrets. Set `API_STORAGE=local` explicitly for local JSON storage; Vercel
 requires Supabase. Run `npm test` for configuration and login regressions.
 
 The API stores users, cases, consultations, and documents in `server/data/`.
@@ -22,7 +22,7 @@ case document storage. The service role key is server-only; never prefix it with
 `VITE_` or expose it in browser code.
 
 1. Create a Supabase project and run `supabase/schema.sql` in its SQL Editor.
-2. Copy `.env.example` to `.env`, add the Supabase project URL and service role
+2. In your local `.env`, add the Supabase project URL and service role
    secret key, then migrate the current local records with:
 
    ```powershell
