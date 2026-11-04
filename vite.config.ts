@@ -15,6 +15,10 @@ const pages = [
 export default defineConfig({
   // GitHub Pages serves this repository beneath its name; Vercel serves at /
   base: process.env.GITHUB_ACTIONS ? '/HE-Turaso-Law-Council/' : '/',
+  server: {
+    // Keep deployment caches and runtime data outside the frontend watcher.
+    watch: { ignored: ['**/.vercel/**', '**/server/data/**'] }
+  },
   build: {
     rollupOptions: {
       input: Object.fromEntries(pages.map((page) => [page.replace('.html', ''), resolve(process.cwd(), page)]))
